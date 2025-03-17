@@ -1,0 +1,77 @@
+# Girgaya - Multiplayer Obstacle Course Game
+
+## Project Overview
+Girgaya is a browser-based multiplayer obstacle course elimination game inspired by Fall Guys. The game features 3D physics-based gameplay with multiple mini-games and real-time multiplayer functionality.
+
+## Architecture Decisions
+- Frontend: Three.js + Cannon.js for 3D rendering and physics
+- Backend: FastAPI with WebSocket support
+- Message Queue: RabbitMQ for game event handling
+- Build Tool: Vite for frontend development
+
+## Coding Standards
+
+### General
+- Use TypeScript for frontend development
+- Follow PEP 8 for Python backend code
+- Use meaningful variable and function names
+- Add JSDoc/TypeDoc comments for complex functions
+- Keep functions focused and single-purpose
+
+### Frontend
+- Use ES6+ features
+- Implement responsive design patterns
+- Follow Three.js best practices for performance
+- Use TypeScript interfaces for type safety
+- Implement proper error handling for WebSocket connections
+
+### Backend
+- Use FastAPI dependency injection
+- Implement proper WebSocket error handling
+- Use Pydantic models for data validation
+- Follow RESTful API design principles
+- Implement proper logging and monitoring
+
+### Git Workflow
+- Use feature branches for new development
+- Write descriptive commit messages
+- Keep commits atomic and focused
+- Review code before merging to main
+
+### Testing
+- Write unit tests for critical components
+- Implement integration tests for WebSocket functionality
+- Test on multiple devices and browsers
+- Maintain test coverage above 80%
+
+## Project Structure
+```
+girgaya/
+├── frontend/           # Three.js + Vite frontend
+│   ├── src/
+│   │   ├── game/      # Game logic and components
+│   │   ├── network/   # WebSocket and API clients
+│   │   └── assets/    # 3D models and textures
+│   └── public/        # Static assets
+├── backend/           # FastAPI backend
+│   ├── app/
+│   │   ├── api/      # API endpoints
+│   │   ├── game/     # Game logic
+│   │   └── models/   # Data models
+│   └── tests/        # Backend tests
+└── docs/             # Project documentation
+```
+
+## Performance Guidelines
+- Optimize 3D models for web performance
+- Implement proper asset loading and caching
+- Use WebGL optimizations where possible
+- Monitor and optimize network traffic
+- Implement proper garbage collection
+
+## Security Guidelines
+- Validate all user input
+- Implement proper authentication
+- Use HTTPS for all communications
+- Sanitize WebSocket messages
+- Follow OWASP security guidelines 
