@@ -4,9 +4,9 @@ import { LightCycle } from './LightCycle';
 export class CameraController {
     private camera: THREE.PerspectiveCamera;
     private target: LightCycle;
-    private readonly FOLLOW_DISTANCE = 35;
-    private readonly HEIGHT_OFFSET = 10;
-    private readonly LOOK_AHEAD = 15;
+    private readonly FOLLOW_DISTANCE = 25;
+    private readonly HEIGHT_OFFSET = 8;
+    private readonly LOOK_AHEAD = 12;
     private readonly SMOOTHING = 0.05;
     private readonly TILT_STRENGTH = 0.15;
     private currentPosition = new THREE.Vector3();
@@ -18,16 +18,17 @@ export class CameraController {
         this.camera = camera;
         this.target = target;
         
-        // Set initial camera position
+        // Set initial camera position for centered view
         const targetPos = target.getPosition();
         const targetRot = target.getRotation();
         
-        // Calculate initial positions
-        this.calculateIdealCameraPositions(targetPos, targetRot, target.getCurrentSpeed());
+        // Calculate initial positions for centered start
+        this.calculateIdealCameraPositions(targetPos, 0, target.getCurrentSpeed());
         
         this.currentPosition.copy(this.idealOffset);
         this.currentLookAt.copy(this.idealLookAt);
         
+        // Position camera behind bike, looking forward
         this.camera.position.copy(this.currentPosition);
         this.camera.lookAt(this.currentLookAt);
     }
@@ -36,14 +37,14 @@ export class CameraController {
         // Calculate camera offset based on bike's position and rotation
         this.idealOffset.set(
             targetPos.x - Math.sin(targetRot) * this.FOLLOW_DISTANCE,
-            targetPos.y + this.HEIGHT_OFFSET + (speed / 100) * 2, // Slight height increase with speed
+            targetPos.y + this.HEIGHT_OFFSET + (speed / 150) * 2,
             targetPos.z - Math.cos(targetRot) * this.FOLLOW_DISTANCE
         );
 
         // Calculate look-at point ahead of the bike
         this.idealLookAt.set(
             targetPos.x + Math.sin(-targetRot) * this.LOOK_AHEAD,
-            targetPos.y + 2, // Look slightly above the bike
+            targetPos.y + 1.5,
             targetPos.z + Math.cos(-targetRot) * this.LOOK_AHEAD
         );
     }
@@ -74,8 +75,8 @@ export class CameraController {
         );
 
         // Adjust FOV based on speed
-        const baseFOV = 75;
-        const targetFOV = baseFOV + (targetSpeed / 50) * 5;
+        const baseFOV = 70;
+        const targetFOV = baseFOV + (targetSpeed / 60) * 5;
         this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFOV, 0.05);
         this.camera.updateProjectionMatrix();
     }

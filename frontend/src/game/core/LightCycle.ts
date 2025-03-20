@@ -11,6 +11,7 @@ export class LightCycle {
     private readonly MIN_SPEED = 30;
     private readonly ACCELERATION = 20;
     private readonly TURN_SPEED = 2.5;
+    private readonly ARENA_SIZE = 500; // Match updated ground size
     private currentSpeed = this.MIN_SPEED;
     private turnDirection = 0;
     private targetRotation = 0;
@@ -25,6 +26,7 @@ export class LightCycle {
     private modelLoaded = false;
     private scene: THREE.Scene;
     private rearLight: THREE.PointLight;
+    private initialScale = new THREE.Vector3(2.5, 2.5, 2.5);
 
     constructor(scene: THREE.Scene, world: CANNON.World) {
         this.scene = scene;
@@ -37,15 +39,19 @@ export class LightCycle {
         const shape = new CANNON.Box(new CANNON.Vec3(3, 1.5, 6));
         this.body = new CANNON.Body({
             mass: 1,
-            position: new CANNON.Vec3(0, 2, 0), // Start at center of arena
+            position: new CANNON.Vec3(0, 2, 0), // Center of arena
             shape: shape,
             linearDamping: 0.1,
             fixedRotation: true
         });
         
-        // Initialize velocity to prevent initial jumping
+        // Initialize velocity to move forward (negative Z direction)
         this.body.velocity.set(0, 0, -this.MIN_SPEED);
         world.addBody(this.body);
+
+        // Initialize rotation to face forward
+        this.targetRotation = 0;
+        this.currentRotation = 0;
 
         // Initialize light trail
         this.trailMaterial = new THREE.MeshStandardMaterial({ 
@@ -72,7 +78,7 @@ export class LightCycle {
             objLoader.setMaterials(materials);
             objLoader.load('/models/bike2.obj', (object) => {
                 this.mesh = object;
-                this.mesh.scale.set(2.5, 2.5, 2.5);
+                this.mesh.scale.copy(this.initialScale);
                 
                 // Adjust materials for TRON style
                 this.mesh.traverse((child) => {
@@ -154,6 +160,20 @@ export class LightCycle {
     update(deltaTime: number) {
         if (!this.modelLoaded) return;
 
+        // Check boundary collisions
+        const pos = this.mesh.position;
+        const boundary = this.ARENA_SIZE / 2 - 5; // 5 units buffer from walls
+        
+        if (Math.abs(pos.x) > boundary || Math.abs(pos.z) > boundary) {
+            // Trigger explosion effect and respawn
+            this.explode();
+            // Reload the game after a short delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500); // 1.5 seconds to show explosion
+            return;
+        }
+
         // Update speed
         this.currentSpeed = Math.min(
             this.currentSpeed + this.ACCELERATION * deltaTime,
@@ -188,6 +208,7 @@ export class LightCycle {
         // Update mesh position and rotation
         this.mesh.position.copy(this.body.position as any);
         this.mesh.rotation.y = this.currentRotation;
+        this.mesh.scale.copy(this.initialScale); // Maintain the initial scale
 
         // Update rear light position
         const rearOffset = new THREE.Vector3(
@@ -331,5 +352,58 @@ export class LightCycle {
                 }
             });
         }
+    }
+
+    private explode() {
+        if (!this.modelLoaded) return;
+
+        // Create explosion particles
+        const particleCount = 50;
+        const colors = [0x0fbef2, 0xffffff, 0x00ff00]; // Tron-style colors
+        
+        for (let i = 0; i < particleCount; i++) {
+            const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const material = new THREE.MeshBasicMaterial({
+                color: colors[Math.floor(Math.random() * colors.length)],
+                transparent: true,
+                opacity: 1
+            });
+            
+            const particle = new THREE.Mesh(geometry, material);
+            particle.position.copy(this.mesh.position);
+            
+            // Random velocity
+            const velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 10,
+                Math.random() * 10,
+                (Math.random() - 0.5) * 10
+            );
+            
+            this.scene.add(particle);
+            
+            // Animate particle
+            const animate = () => {
+                particle.position.add(velocity);
+                velocity.y -= 0.2; // Gravity
+                material.opacity -= 0.02;
+                
+                if (material.opacity > 0) {
+                    requestAnimationFrame(animate);
+                } else {
+                    this.scene.remove(particle);
+                    geometry.dispose();
+                    material.dispose();
+                }
+            };
+            
+            animate();
+        }
+        
+        // Hide the bike
+        this.mesh.visible = false;
+        
+        // Stop all movement
+        this.body.velocity.setZero();
+        this.currentSpeed = 0;
     }
 } 

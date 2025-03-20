@@ -5,10 +5,11 @@ import { Suspense, useRef, useState, useEffect } from 'react';
 import StartMenu from './StartMenu';
 import { TronGame } from './core/TronGame';
 import { CameraController } from './core/CameraController';
+import { Minimap } from '../components/Minimap';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
-const GameRenderer = ({ game }: { game: TronGame }) => {
+const GameRenderer = ({ game, onPositionUpdate }: { game: TronGame; onPositionUpdate: (pos: { x: number; z: number }) => void }) => {
   const { camera } = useThree();
   const cameraController = useRef<CameraController>();
 
@@ -24,6 +25,12 @@ const GameRenderer = ({ game }: { game: TronGame }) => {
   useFrame((state, delta) => {
     if (cameraController.current) {
       cameraController.current.update(delta);
+      
+      // Update player position for minimap
+      const playerPos = game.getPlayer()?.getPosition();
+      if (playerPos) {
+        onPositionUpdate({ x: playerPos.x, z: playerPos.z });
+      }
     }
   });
 
@@ -33,6 +40,7 @@ const GameRenderer = ({ game }: { game: TronGame }) => {
 export const GameScene = () => {
   const [gameStarted, setGameStarted] = useState(false);
   const [playerName, setPlayerName] = useState<string>();
+  const [playerPosition, setPlayerPosition] = useState({ x: 0, z: 0 });
   const scene = useRef<THREE.Scene>();
   const game = useRef<TronGame>();
 
@@ -49,6 +57,10 @@ export const GameScene = () => {
       game.current = new TronGame(scene.current, physicsWorld);
       game.current.start(name);
     }
+  };
+
+  const handlePositionUpdate = (pos: { x: number; z: number }) => {
+    setPlayerPosition(pos);
   };
 
   return (
@@ -75,12 +87,18 @@ export const GameScene = () => {
                 restitution: 0.2,
               }}
             >
-              {gameStarted && game.current && <GameRenderer game={game.current} />}
+              {gameStarted && game.current && (
+                <GameRenderer 
+                  game={game.current} 
+                  onPositionUpdate={handlePositionUpdate}
+                />
+              )}
             </Physics>
           </Suspense>
         </Canvas>
       </KeyboardControls>
       {!gameStarted && <StartMenu onStart={handleGameStart} />}
+      {gameStarted && <Minimap playerPosition={playerPosition} arenaSize={500} />}
     </>
   );
 }; 
