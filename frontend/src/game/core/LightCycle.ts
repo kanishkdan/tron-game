@@ -8,7 +8,7 @@ export class LightCycle {
     private mesh!: THREE.Group;
     private body: CANNON.Body;
     private readonly SIZE_MULTIPLIER = 4; // Standardized multiplier across all components
-    private readonly MAX_SPEED = 40 * this.SIZE_MULTIPLIER;
+    private readonly MAX_SPEED = 20 * this.SIZE_MULTIPLIER;
     private readonly MIN_SPEED = 10 * this.SIZE_MULTIPLIER;
     private readonly ACCELERATION = 15 * this.SIZE_MULTIPLIER;
     private readonly DECELERATION = 10 * this.SIZE_MULTIPLIER;
@@ -44,9 +44,11 @@ export class LightCycle {
     private currentTrailLength = 100;
     private totalTrailDistance = 0;
     private trailMeshes: THREE.Mesh[] = [];
+    private onCollision?: () => void; // Callback for collision handling
 
-    constructor(scene: THREE.Scene, world: CANNON.World) {
+    constructor(scene: THREE.Scene, world: CANNON.World, onCollision?: () => void) {
         this.scene = scene;
+        this.onCollision = onCollision;
 
         // Create rear light
         this.rearLight = new THREE.PointLight(0x0fbef2, 2, 30);
@@ -237,11 +239,40 @@ export class LightCycle {
         const boundary = this.ARENA_SIZE / 2 - 5;
         
         if (Math.abs(pos.x) > boundary || Math.abs(pos.z) > boundary) {
-            this.explode();
+            // Hide the bike and stop movement
+            this.mesh.visible = false;
+            this.body.velocity.setZero();
+            this.currentSpeed = 0;
+            this.onCollision?.();
             setTimeout(() => {
                 window.location.reload();
             }, 1500);
             return;
+        }
+
+        // Check trail collisions
+        if (this.trailPoints.length > 1) {
+            const currentPos = new THREE.Vector3(pos.x, 0.25, pos.z);
+            const lastPoint = this.trailPoints[this.trailPoints.length - 1];
+            
+            // Skip the last few points to prevent immediate self-collision
+            for (let i = 0; i < this.trailPoints.length - 5; i++) {
+                const trailPoint = this.trailPoints[i];
+                const distance = currentPos.distanceTo(trailPoint);
+                
+                // If we're too close to any trail point, destroy the player
+                if (distance < 2) {
+                    // Hide the bike and stop movement
+                    this.mesh.visible = false;
+                    this.body.velocity.setZero();
+                    this.currentSpeed = 0;
+                    this.onCollision?.();
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                    return;
+                }
+            }
         }
 
         // Update speed with smooth acceleration/deceleration
@@ -544,59 +575,6 @@ export class LightCycle {
         }
         this.trailPoints = [];
         this.scene.remove(this.trailLight);
-    }
-
-    private explode() {
-        if (!this.mesh) return;
-
-        // Create explosion particles
-        const particleCount = 50;
-        const colors = [0x0fbef2, 0xffffff, 0x00ff00]; // Tron-style colors
-        
-        for (let i = 0; i < particleCount; i++) {
-            const geometry = new THREE.SphereGeometry(0.2, 8, 8);
-            const material = new THREE.MeshBasicMaterial({
-                color: colors[Math.floor(Math.random() * colors.length)],
-                transparent: true,
-                opacity: 1
-            });
-            
-            const particle = new THREE.Mesh(geometry, material);
-            particle.position.copy(this.mesh.position);
-            
-            // Random velocity
-            const velocity = new THREE.Vector3(
-                (Math.random() - 0.5) * 10,
-                Math.random() * 10,
-                (Math.random() - 0.5) * 10
-            );
-            
-            this.scene.add(particle);
-            
-            // Animate particle
-            const animate = () => {
-                particle.position.add(velocity);
-                velocity.y -= 0.2; // Gravity
-                material.opacity -= 0.02;
-                
-                if (material.opacity > 0) {
-                    requestAnimationFrame(animate);
-                } else {
-                    this.scene.remove(particle);
-                    geometry.dispose();
-                    material.dispose();
-                }
-            };
-            
-            animate();
-        }
-        
-        // Hide the bike
-        this.mesh.visible = false;
-        
-        // Stop all movement
-        this.body.velocity.setZero();
-        this.currentSpeed = 0;
     }
 
     // Add getter for trail points (for minimap)

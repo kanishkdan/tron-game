@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { FpsCounter } from './FpsCounter';
 
 interface MinimapProps {
     playerPosition: { x: number; z: number };
@@ -94,21 +95,24 @@ export const Minimap = ({ playerPosition, arenaSize, trailPoints = [] }: Minimap
     }, [playerPosition, arenaSize, trailPoints]);
 
     return (
-        <div style={{
-            position: 'absolute',
-            top: '20px',
-            right: '20px',
-            border: '2px solid #0fbef2',
-            borderRadius: '5px',
-            padding: '5px',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)'
-        }}>
-            <canvas
-                ref={canvasRef}
-                width={MINIMAP_SIZE}
-                height={MINIMAP_SIZE}
-                style={{ display: 'block' }}
-            />
-        </div>
+        <>
+            <div style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                border: '2px solid #0fbef2',
+                borderRadius: '5px',
+                padding: '5px',
+                backgroundColor: 'rgba(0, 0, 0, 0.5)'
+            }}>
+                <canvas
+                    ref={canvasRef}
+                    width={MINIMAP_SIZE}
+                    height={MINIMAP_SIZE}
+                    style={{ display: 'block' }}
+                />
+            </div>
+            <FpsCounter />
+        </>
     );
 }; 

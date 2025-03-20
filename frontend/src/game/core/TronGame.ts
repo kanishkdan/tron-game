@@ -29,7 +29,9 @@ export class TronGame {
 
     start(playerName: string) {
         // Create player's light cycle
-        const playerCycle = new LightCycle(this.scene, this.world);
+        const playerCycle = new LightCycle(this.scene, this.world, () => {
+            this.handleCollision(playerCycle);
+        });
         this.players.set(playerName, playerCycle);
         this.currentPlayer = playerCycle;
 
@@ -124,18 +126,27 @@ export class TronGame {
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
         const sizes = new Float32Array(particleCount);
+        const velocities = new Float32Array(particleCount * 3);
 
         const color = new THREE.Color(0x0fbef2);
         for (let i = 0; i < particleCount; i++) {
+            // Initial position at explosion point
             positions[i * 3] = position.x;
             positions[i * 3 + 1] = position.y;
             positions[i * 3 + 2] = position.z;
 
+            // Set color
             colors[i * 3] = color.r;
             colors[i * 3 + 1] = color.g;
             colors[i * 3 + 2] = color.b;
 
-            sizes[i] = Math.random() * 2;
+            // Random size
+            sizes[i] = Math.random() * 1.5;
+
+            // Initial velocity - more downward and less spread
+            velocities[i * 3] = (Math.random() - 0.5) * 5; // Less horizontal spread
+            velocities[i * 3 + 1] = Math.random() * 10; // Initial upward velocity
+            velocities[i * 3 + 2] = (Math.random() - 0.5) * 5; // Less horizontal spread
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -153,18 +164,29 @@ export class TronGame {
         const particles = new THREE.Points(geometry, material);
         this.scene.add(particles);
 
-        // Animate particles
-        const velocities = positions.map(() => (Math.random() - 0.5) * 20);
+        // Animate particles with more realistic gravity
+        const gravity = 0.5;
         const animate = () => {
             for (let i = 0; i < particleCount; i++) {
+                // Update velocity with gravity
+                velocities[i * 3 + 1] -= gravity;
+
+                // Update position
                 positions[i * 3] += velocities[i * 3] * 0.1;
-                positions[i * 3 + 1] += velocities[i * 3 + 1] * 0.1 + 0.1;
+                positions[i * 3 + 1] += velocities[i * 3 + 1] * 0.1;
                 positions[i * 3 + 2] += velocities[i * 3 + 2] * 0.1;
+
+                // Fade out based on height
+                const heightFactor = Math.max(0, positions[i * 3 + 1] / 10);
+                colors[i * 3 + 3] = color.r * heightFactor;
+                colors[i * 3 + 4] = color.g * heightFactor;
+                colors[i * 3 + 5] = color.b * heightFactor;
             }
             geometry.attributes.position.needsUpdate = true;
+            geometry.attributes.color.needsUpdate = true;
 
             if (material.opacity > 0) {
-                material.opacity -= 0.02;
+                material.opacity -= 0.01;
                 requestAnimationFrame(animate);
             } else {
                 this.scene.remove(particles);
