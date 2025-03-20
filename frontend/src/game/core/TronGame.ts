@@ -12,6 +12,8 @@ export class TronGame {
     private lastUpdateTime: number = 0;
     private isGameOver: boolean = false;
     private currentPlayer: LightCycle | null = null;
+    private readonly SIZE_MULTIPLIER = 4; // Match the multiplier from LightCycle.ts
+    private readonly ARENA_SIZE = 500 * this.SIZE_MULTIPLIER;
 
     constructor(scene: THREE.Scene, world: CANNON.World) {
         this.scene = scene;
@@ -19,8 +21,8 @@ export class TronGame {
 
         // Create arena with configuration
         this.arena = new Arena(scene, world, {
-            size: 500, // Size of the arena
-            wallHeight: 20, // Height of boundary walls
+            size: this.ARENA_SIZE, // Size of the arena with multiplier
+            wallHeight: 20 * this.SIZE_MULTIPLIER, // Height of boundary walls
             groundTexturePath: '/segment.jpg' // Using your provided texture
         });
     }
@@ -38,6 +40,10 @@ export class TronGame {
 
     getPlayer(): LightCycle | null {
         return this.currentPlayer;
+    }
+
+    getArenaSize(): number {
+        return this.ARENA_SIZE;
     }
 
     private update = () => {
@@ -85,7 +91,7 @@ export class TronGame {
         }
 
         // Check if cycle is out of bounds
-        if (Math.abs(position.x) > 400 || position.y < -10) {
+        if (Math.abs(position.x) > this.ARENA_SIZE/2 - 10 || Math.abs(position.z) > this.ARENA_SIZE/2 - 10 || position.y < -10) {
             this.handleCollision(cycle);
         }
     }

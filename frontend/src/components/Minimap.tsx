@@ -29,10 +29,37 @@ export const Minimap = ({ playerPosition, arenaSize, trailPoints = [] }: Minimap
         ctx.strokeRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
 
         // Convert world coordinates to minimap coordinates
+        // This scaling factor is critical - need to use the actual arena size
+        const scale = MINIMAP_SIZE / arenaSize;
         const worldToMinimap = (pos: { x: number; z: number }) => ({
-            x: (pos.x + arenaSize / 2) * (MINIMAP_SIZE / arenaSize),
-            y: (pos.z + arenaSize / 2) * (MINIMAP_SIZE / arenaSize)
+            x: (pos.x + arenaSize / 2) * scale,
+            y: (pos.z + arenaSize / 2) * scale
         });
+
+        // Draw boundaries - this helps visualize the actual play area
+        const halfSize = arenaSize / 2;
+        const boundaries = [
+            { x: -halfSize, z: -halfSize }, // Bottom-left
+            { x: halfSize, z: -halfSize },  // Bottom-right
+            { x: halfSize, z: halfSize },   // Top-right
+            { x: -halfSize, z: halfSize },  // Top-left
+            { x: -halfSize, z: -halfSize }  // Back to start
+        ];
+
+        // Draw boundary
+        ctx.beginPath();
+        ctx.strokeStyle = '#ff0000'; // Red to distinguish from trail
+        ctx.lineWidth = 1;
+        
+        const startBoundary = worldToMinimap(boundaries[0]);
+        ctx.moveTo(startBoundary.x, startBoundary.y);
+        
+        for (let i = 1; i < boundaries.length; i++) {
+            const point = worldToMinimap(boundaries[i]);
+            ctx.lineTo(point.x, point.y);
+        }
+        
+        ctx.stroke();
 
         // Draw trail
         if (trailPoints.length > 1) {
@@ -57,6 +84,12 @@ export const Minimap = ({ playerPosition, arenaSize, trailPoints = [] }: Minimap
         ctx.beginPath();
         ctx.arc(minimapPos.x, minimapPos.y, PLAYER_DOT_SIZE, 0, Math.PI * 2);
         ctx.fill();
+
+        // Add debug info
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '8px Arial';
+        ctx.fillText(`Arena: ${arenaSize}x${arenaSize}`, 5, 10);
+        ctx.fillText(`Player: ${Math.round(playerPosition.x)},${Math.round(playerPosition.z)}`, 5, 20);
 
     }, [playerPosition, arenaSize, trailPoints]);
 

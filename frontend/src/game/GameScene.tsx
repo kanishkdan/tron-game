@@ -9,6 +9,42 @@ import { Minimap } from '../components/Minimap';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
+// Lighting component to handle all scene lighting
+const SceneLighting = () => {
+    return (
+        <>
+            {/* Ambient light for base illumination */}
+            <ambientLight intensity={0.2} />
+            
+            {/* Main directional light from above */}
+            <directionalLight
+                position={[0, 100, 0]}
+                intensity={0.8}
+                castShadow
+                shadow-mapSize-width={2048}
+                shadow-mapSize-height={2048}
+            />
+            
+            {/* Additional point lights for Tron-like glow effect */}
+            <pointLight position={[0, 50, 0]} intensity={0.8} color={0x0fbef2} distance={1000} />
+            <pointLight position={[50, 50, 50]} intensity={0.5} color={0x0fbef2} distance={1000} />
+            <pointLight position={[-50, 50, -50]} intensity={0.5} color={0x0fbef2} distance={1000} />
+            
+            {/* Add spotlight for dramatic effect */}
+            <spotLight
+                position={[0, 200, 0]}
+                angle={Math.PI / 4}
+                penumbra={0.2}
+                intensity={0.8}
+                color={0xffffff}
+                castShadow
+                shadow-mapSize-width={2048}
+                shadow-mapSize-height={2048}
+            />
+        </>
+    );
+};
+
 const GameRenderer = ({ game, onPositionUpdate }: { 
     game: TronGame; 
     onPositionUpdate: (pos: { x: number; z: number }, trailPoints: { x: number; z: number }[]) => void 
@@ -50,6 +86,7 @@ export const GameScene = () => {
     const [playerName, setPlayerName] = useState<string>();
     const [playerPosition, setPlayerPosition] = useState({ x: 0, z: 0 });
     const [trailPoints, setTrailPoints] = useState<{ x: number; z: number }[]>([]);
+    const [arenaSize, setArenaSize] = useState(500);
     const scene = useRef<THREE.Scene>();
     const game = useRef<TronGame>();
 
@@ -64,6 +101,11 @@ export const GameScene = () => {
             physicsWorld.defaultContactMaterial.restitution = 0.2;
             game.current = new TronGame(scene.current, physicsWorld);
             game.current.start(name);
+            
+            // Set the arena size from the game
+            if (game.current) {
+                setArenaSize(game.current.getArenaSize());
+            }
         }
     };
 
@@ -84,26 +126,19 @@ export const GameScene = () => {
             >
                 <Canvas shadows onCreated={(state: RootState) => { scene.current = state.scene; }}>
                     <Suspense fallback={null}>
+                        <SceneLighting />
                         <PerspectiveCamera
                             makeDefault
                             position={[0, 8, 25]}
                             rotation={[-0.3, 0, 0]}
                             fov={75}
                         />
-                        <Physics
-                            gravity={[0, -19.81, 0]}
-                            defaultContactMaterial={{
-                                friction: 0.1,
-                                restitution: 0.2,
-                            }}
-                        >
-                            {gameStarted && game.current && (
-                                <GameRenderer 
-                                    game={game.current} 
-                                    onPositionUpdate={handlePositionUpdate}
-                                />
-                            )}
-                        </Physics>
+                        {gameStarted && game.current && (
+                            <GameRenderer 
+                                game={game.current} 
+                                onPositionUpdate={handlePositionUpdate}
+                            />
+                        )}
                     </Suspense>
                 </Canvas>
             </KeyboardControls>
@@ -111,7 +146,7 @@ export const GameScene = () => {
             {gameStarted && (
                 <Minimap 
                     playerPosition={playerPosition} 
-                    arenaSize={500} 
+                    arenaSize={arenaSize} 
                     trailPoints={trailPoints}
                 />
             )}
