@@ -1,4 +1,4 @@
-import { usePlane } from '@react-three/cannon';
+import { usePlane, useBox } from '@react-three/cannon';
 import * as THREE from 'three';
 import { useLoader } from '@react-three/fiber';
 import { TextureLoader, RepeatWrapping, NearestFilter, LinearFilter } from 'three';
@@ -12,15 +12,42 @@ export const Ground = () => {
   texture.minFilter = LinearFilter;
   texture.needsUpdate = true;
 
+  const SIZE_MULTIPLIER = 2; // Match the multiplier from LightCycle.ts
+  const groundSize = 5000 * SIZE_MULTIPLIER;
+  const wallHeight = 20 * SIZE_MULTIPLIER;
+
+  // Update physics plane to match visual size
   const [ref] = usePlane<THREE.Mesh>(() => ({
     rotation: [-Math.PI / 2, 0, 0],
     position: [0, 0, 0],
     type: 'Static',
+    args: [groundSize, groundSize], // Add size arguments to the physics plane
   }));
 
-  // Create a larger ground plane and add visible boundaries
-  const groundSize = 5000;
-  const wallHeight = 20;
+  // Add physics walls
+  const [frontWall] = useBox<THREE.Mesh>(() => ({
+    type: 'Static',
+    position: [0, wallHeight/2, -groundSize/2],
+    args: [groundSize, wallHeight, 1],
+  }));
+
+  const [backWall] = useBox<THREE.Mesh>(() => ({
+    type: 'Static',
+    position: [0, wallHeight/2, groundSize/2],
+    args: [groundSize, wallHeight, 1],
+  }));
+
+  const [leftWall] = useBox<THREE.Mesh>(() => ({
+    type: 'Static',
+    position: [-groundSize/2, wallHeight/2, 0],
+    args: [1, wallHeight, groundSize],
+  }));
+
+  const [rightWall] = useBox<THREE.Mesh>(() => ({
+    type: 'Static',
+    position: [groundSize/2, wallHeight/2, 0],
+    args: [1, wallHeight, groundSize],
+  }));
   
   return (
     <>
@@ -63,7 +90,7 @@ export const Ground = () => {
 
       {/* Boundary walls with improved materials */}
       {/* Front wall */}
-      <mesh position={[0, wallHeight/2, -groundSize/2]} receiveShadow>
+      <mesh ref={frontWall} position={[0, wallHeight/2, -groundSize/2]} receiveShadow>
         <boxGeometry args={[groundSize, wallHeight, 1]} />
         <meshPhysicalMaterial 
           color="#0fbef2" 
@@ -81,7 +108,7 @@ export const Ground = () => {
       </mesh>
 
       {/* Back wall */}
-      <mesh position={[0, wallHeight/2, groundSize/2]} receiveShadow>
+      <mesh ref={backWall} position={[0, wallHeight/2, groundSize/2]} receiveShadow>
         <boxGeometry args={[groundSize, wallHeight, 1]} />
         <meshPhysicalMaterial 
           color="#0fbef2" 
@@ -99,7 +126,7 @@ export const Ground = () => {
       </mesh>
 
       {/* Left wall */}
-      <mesh position={[-groundSize/2, wallHeight/2, 0]} receiveShadow>
+      <mesh ref={leftWall} position={[-groundSize/2, wallHeight/2, 0]} receiveShadow>
         <boxGeometry args={[1, wallHeight, groundSize]} />
         <meshPhysicalMaterial 
           color="#0fbef2" 
@@ -117,7 +144,7 @@ export const Ground = () => {
       </mesh>
 
       {/* Right wall */}
-      <mesh position={[groundSize/2, wallHeight/2, 0]} receiveShadow>
+      <mesh ref={rightWall} position={[groundSize/2, wallHeight/2, 0]} receiveShadow>
         <boxGeometry args={[1, wallHeight, groundSize]} />
         <meshPhysicalMaterial 
           color="#0fbef2" 

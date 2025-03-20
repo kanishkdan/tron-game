@@ -7,14 +7,15 @@ import { useKeyboardControls } from '@react-three/drei';
 export class LightCycle {
     private mesh!: THREE.Group;
     private body: CANNON.Body;
-    private readonly MAX_SPEED = 50;
-    private readonly MIN_SPEED = 30;
-    private readonly ACCELERATION = 15;
-    private readonly DECELERATION = 20;
+    private readonly SIZE_MULTIPLIER = 5; // Global multiplier for map size
+    private readonly MAX_SPEED = 40 * this.SIZE_MULTIPLIER;
+    private readonly MIN_SPEED = 10 * this.SIZE_MULTIPLIER;
+    private readonly ACCELERATION = 15 * this.SIZE_MULTIPLIER;
+    private readonly DECELERATION = 10 * this.SIZE_MULTIPLIER;
     private readonly TURN_SPEED = 2.0;
     private readonly BANK_ANGLE = 0.3;
-    private readonly GRID_SIZE = 2;
-    private readonly ARENA_SIZE = 500;
+    private readonly GRID_SIZE = 4 * this.SIZE_MULTIPLIER;
+    private readonly ARENA_SIZE = 500 * this.SIZE_MULTIPLIER;
     private currentSpeed = this.MIN_SPEED;
     private turnDirection = 0;
     private targetRotation = 0;
@@ -379,8 +380,8 @@ export class LightCycle {
         this.trailVertices = [];
         this.trailIndices = [];
         
-        const trailWidth = 0.2;  // Width of the trail
-        const trailHeight = 2.0;  // Height of the trail
+        const trailWidth = 0.1;  // Width of the trail
+        const trailHeight = 3.5;  // Height of the trail
         
         // Build vertices and indices for all points
         for (let i = 0; i < this.trailPoints.length - 1; i++) {
