@@ -39,6 +39,12 @@ export class LightCycle {
     private lastUpdateTime = 0;
     private readonly MOVEMENT_UPDATE_RATE = 1000 / 60; // 60 FPS
     private trailLight: THREE.PointLight;
+    private readonly MAX_TRAIL_LENGTH = 500; // Maximum trail length in units
+    private readonly TRAIL_GROWTH_RATE = 30; // Units per second
+    private currentTrailLength = 0;
+    private totalTrailDistance = 0;
+    private lastTrailPoint: THREE.Vector3 | null = null;
+    private trailMeshes: THREE.Mesh[] = [];
 
     constructor(scene: THREE.Scene, world: CANNON.World) {
         this.scene = scene;
@@ -85,16 +91,14 @@ export class LightCycle {
         this.currentRotation = 0;
 
         // Initialize light trail with adjusted height
-        this.trailMaterial = new THREE.MeshPhysicalMaterial({ 
-            color: 0x0fbef2, 
-            transparent: true,
-            opacity: 0.9,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x0fbef2),
+        this.trailMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0x00ff00,
+            emissive: 0x00ff00,
             emissiveIntensity: 1.5,
-            metalness: 0.9,
-            roughness: 0.1,
-            // Removed clearcoat for performance
+            metalness: 0.8,
+            roughness: 0.2,
+            transparent: true,
+            opacity: 0.8
         });
         
         // Taller trail geometry for better visibility
@@ -102,7 +106,7 @@ export class LightCycle {
         this.lastTrailPosition = new THREE.Vector3(0, 1.0, 0);
 
         // Create a single persistent light for the trail
-        this.trailLight = new THREE.PointLight(0x0fbef2, 2, 10);
+        this.trailLight = new THREE.PointLight(0x00ff00, 2, 10);
         this.scene.add(this.trailLight);
 
         // Load bike model with adjusted position
@@ -348,107 +352,65 @@ export class LightCycle {
         );
         this.rearLight.position.copy(this.mesh.position).add(rearOffset);
 
-        // Update light trail with improved alignment
+        // Update trail length and trail
+        this.updateTrailLength(timeSinceLastUpdate);
         this.updateLightTrail();
     }
 
-    private updateLightTrail() {
-        if (!this.modelLoaded) return;
-        
-        // Calculate tire position with improved alignment and height
-        const currentPosition = this.mesh.position.clone();
-        currentPosition.y = 1.0; // Slightly lower for better performance
-        
-        // Calculate tire offset based on current rotation
-        const tireOffset = new THREE.Vector3(
-            Math.sin(this.currentRotation) * 1.5,
-            0,
-            Math.cos(this.currentRotation) * 1.5
-        );
-        
-        // Position trail at the tire with precise alignment
-        currentPosition.sub(tireOffset);
-        
-        const distance = currentPosition.distanceTo(this.lastTrailPosition);
-        
-        // Only create new trail segment if we've moved enough
-        if (distance > this.TRAIL_SEGMENT_DISTANCE) {
-            // Calculate midpoint and direction for precise trail placement
-            const midpoint = new THREE.Vector3().addVectors(
-                this.lastTrailPosition,
-                currentPosition
-            ).multiplyScalar(0.5);
+    private updateTrailLength(delta: number): void {
+        // Grow trail length over time
+        if (this.currentTrailLength < this.MAX_TRAIL_LENGTH) {
+            this.currentTrailLength += this.TRAIL_GROWTH_RATE * delta;
+            this.currentTrailLength = Math.min(this.currentTrailLength, this.MAX_TRAIL_LENGTH);
+        }
+    }
+
+    private updateLightTrail(): void {
+        const position = this.getPosition();
+        if (!position) return;
+
+        const currentPoint = new THREE.Vector3(position.x, 1.0, position.z);
+
+        // Update trail points
+        if (!this.lastTrailPoint || currentPoint.distanceTo(this.lastTrailPoint) > 0.5) {
+            this.trailPoints.push(currentPoint.clone());
             
-            // Calculate trail segment rotation to match movement exactly
-            const direction = new THREE.Vector3().subVectors(
-                currentPosition,
-                this.lastTrailPosition
-            ).normalize();
-            const trailRotation = Math.atan2(direction.x, direction.z);
-            
-            // Create main trail segment with optimized geometry
-            const trailSegment = new THREE.Mesh(
-                new THREE.BoxGeometry(0.2, 2.0, distance),
-                this.trailMaterial
-            );
-            
-            // Add glow effect using a single, wider mesh
-            const glowMaterial = new THREE.MeshBasicMaterial({ // Using Basic instead of Physical
-                color: 0x0fbef2,
-                transparent: true,
-                opacity: 0.3,
-                side: THREE.DoubleSide,
-            });
-            
-            const glowMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(0.6, 2.2, distance),
-                glowMaterial
-            );
-            
-            // Position and rotate trail segments
-            trailSegment.position.copy(midpoint);
-            trailSegment.position.y = 1.0;
-            trailSegment.rotation.y = trailRotation;
-            
-            glowMesh.position.copy(midpoint);
-            glowMesh.position.y = 1.0;
-            glowMesh.rotation.y = trailRotation;
-            
-            // Update single trail light position
-            this.trailLight.position.copy(currentPosition);
-            
-            this.scene.add(trailSegment);
-            this.scene.add(glowMesh);
-            this.lightTrail.push(trailSegment);
-            
-            // Store both meshes for cleanup
-            const trailElements = {
-                segment: trailSegment,
-                glow: glowMesh
-            };
-            
-            // Cleanup old segments
-            if (this.lightTrail.length > this.MAX_TRAIL_POINTS) {
-                const oldElements = this.lightTrail.shift();
-                if (oldElements) {
-                    // Remove both main and glow meshes
-                    if (oldElements.parent) {
-                        oldElements.parent.remove(oldElements);
-                    }
-                    if (oldElements.geometry) {
-                        oldElements.geometry.dispose();
-                    }
-                    if (oldElements.material) {
-                        if (Array.isArray(oldElements.material)) {
-                            oldElements.material.forEach(m => m.dispose());
-                        } else {
-                            oldElements.material.dispose();
-                        }
-                    }
-                }
+            if (this.lastTrailPoint) {
+                // Calculate segment length
+                const segmentLength = currentPoint.distanceTo(this.lastTrailPoint);
+                this.totalTrailDistance += segmentLength;
+
+                // Create trail segment
+                const direction = currentPoint.clone().sub(this.lastTrailPoint).normalize();
+                const trailGeometry = new THREE.BoxGeometry(segmentLength, 2.0, 0.2);
+                const trailMesh = new THREE.Mesh(trailGeometry, this.trailMaterial);
+
+                // Position and rotate trail segment
+                const midPoint = this.lastTrailPoint.clone().add(currentPoint).multiplyScalar(0.5);
+                trailMesh.position.copy(midPoint);
+                trailMesh.lookAt(currentPoint);
+
+                this.scene.add(trailMesh);
+                this.trailMeshes.push(trailMesh);
+
+                // Update trail light position
+                this.trailLight.position.copy(currentPoint);
             }
-            
-            this.lastTrailPosition = currentPosition.clone();
+
+            this.lastTrailPoint = currentPoint.clone();
+
+            // Remove old trail segments if total length exceeds current trail length
+            while (this.totalTrailDistance > this.currentTrailLength && this.trailMeshes.length > 0) {
+                const oldestMesh = this.trailMeshes[0];
+                const oldestLength = (oldestMesh.geometry as THREE.BoxGeometry).parameters.width;
+                
+                this.scene.remove(oldestMesh);
+                oldestMesh.geometry.dispose();
+                this.trailMeshes.shift();
+                this.trailPoints.shift();
+                
+                this.totalTrailDistance -= oldestLength;
+            }
         }
     }
 
@@ -526,6 +488,15 @@ export class LightCycle {
                 }
             });
         }
+
+        // Clean up trail resources
+        this.trailMeshes.forEach(mesh => {
+            this.scene.remove(mesh);
+            mesh.geometry.dispose();
+        });
+        this.trailMeshes = [];
+        this.trailPoints = [];
+        this.scene.remove(this.trailLight);
     }
 
     private explode() {
@@ -579,5 +550,10 @@ export class LightCycle {
         // Stop all movement
         this.body.velocity.setZero();
         this.currentSpeed = 0;
+    }
+
+    // Add getter for trail points (for minimap)
+    getTrailPoints(): THREE.Vector3[] {
+        return this.trailPoints;
     }
 } 

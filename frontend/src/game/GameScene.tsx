@@ -9,97 +9,112 @@ import { Minimap } from '../components/Minimap';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
-const GameRenderer = ({ game, onPositionUpdate }: { game: TronGame; onPositionUpdate: (pos: { x: number; z: number }) => void }) => {
-  const { camera } = useThree();
-  const cameraController = useRef<CameraController>();
+const GameRenderer = ({ game, onPositionUpdate }: { 
+    game: TronGame; 
+    onPositionUpdate: (pos: { x: number; z: number }, trailPoints: { x: number; z: number }[]) => void 
+}) => {
+    const { camera } = useThree();
+    const cameraController = useRef<CameraController>();
 
-  useEffect(() => {
-    if (game.getPlayer()) {
-      cameraController.current = new CameraController(
-        camera as THREE.PerspectiveCamera,
-        game.getPlayer()!
-      );
-    }
-  }, [game, camera]);
+    useEffect(() => {
+        if (game.getPlayer()) {
+            cameraController.current = new CameraController(
+                camera as THREE.PerspectiveCamera,
+                game.getPlayer()!
+            );
+        }
+    }, [game, camera]);
 
-  useFrame((state, delta) => {
-    if (cameraController.current) {
-      cameraController.current.update(delta);
-      
-      // Update player position for minimap
-      const playerPos = game.getPlayer()?.getPosition();
-      if (playerPos) {
-        onPositionUpdate({ x: playerPos.x, z: playerPos.z });
-      }
-    }
-  });
+    useFrame((state, delta) => {
+        if (cameraController.current) {
+            cameraController.current.update(delta);
+            
+            // Update player position and trail for minimap
+            const playerPos = game.getPlayer()?.getPosition();
+            const trailPoints = game.getPlayer()?.getTrailPoints() || [];
+            
+            if (playerPos) {
+                onPositionUpdate(
+                    { x: playerPos.x, z: playerPos.z },
+                    trailPoints.map(p => ({ x: p.x, z: p.z }))
+                );
+            }
+        }
+    });
 
-  return null;
+    return null;
 };
 
 export const GameScene = () => {
-  const [gameStarted, setGameStarted] = useState(false);
-  const [playerName, setPlayerName] = useState<string>();
-  const [playerPosition, setPlayerPosition] = useState({ x: 0, z: 0 });
-  const scene = useRef<THREE.Scene>();
-  const game = useRef<TronGame>();
+    const [gameStarted, setGameStarted] = useState(false);
+    const [playerName, setPlayerName] = useState<string>();
+    const [playerPosition, setPlayerPosition] = useState({ x: 0, z: 0 });
+    const [trailPoints, setTrailPoints] = useState<{ x: number; z: number }[]>([]);
+    const scene = useRef<THREE.Scene>();
+    const game = useRef<TronGame>();
 
-  const handleGameStart = (name: string) => {
-    setPlayerName(name);
-    setGameStarted(true);
-    
-    // Initialize game
-    if (scene.current) {
-      const physicsWorld = new CANNON.World();
-      physicsWorld.gravity.set(0, -19.81, 0);
-      physicsWorld.defaultContactMaterial.friction = 0.1;
-      physicsWorld.defaultContactMaterial.restitution = 0.2;
-      game.current = new TronGame(scene.current, physicsWorld);
-      game.current.start(name);
-    }
-  };
+    const handleGameStart = (name: string) => {
+        setPlayerName(name);
+        setGameStarted(true);
+        
+        if (scene.current) {
+            const physicsWorld = new CANNON.World();
+            physicsWorld.gravity.set(0, -19.81, 0);
+            physicsWorld.defaultContactMaterial.friction = 0.1;
+            physicsWorld.defaultContactMaterial.restitution = 0.2;
+            game.current = new TronGame(scene.current, physicsWorld);
+            game.current.start(name);
+        }
+    };
 
-  const handlePositionUpdate = (pos: { x: number; z: number }) => {
-    setPlayerPosition(pos);
-  };
+    const handlePositionUpdate = (pos: { x: number; z: number }, trail: { x: number; z: number }[]) => {
+        setPlayerPosition(pos);
+        setTrailPoints(trail);
+    };
 
-  return (
-    <>
-      <KeyboardControls
-        map={[
-          { name: 'forward', keys: ['ArrowUp', 'w', 'W'] },
-          { name: 'backward', keys: ['ArrowDown', 's', 'S'] },
-          { name: 'leftward', keys: ['ArrowLeft', 'a', 'A'] },
-          { name: 'rightward', keys: ['ArrowRight', 'd', 'D'] },
-        ]}
-      >
-        <Canvas shadows onCreated={(state: RootState) => { scene.current = state.scene; }}>
-          <Suspense fallback={null}>
-            <PerspectiveCamera
-              makeDefault
-              position={[0, 8, 25]}
-              rotation={[-0.3, 0, 0]}
-              fov={75}
-            />
-            <Physics
-              gravity={[0, -19.81, 0]}
-              defaultContactMaterial={{
-                friction: 0.1,
-                restitution: 0.2,
-              }}
+    return (
+        <>
+            <KeyboardControls
+                map={[
+                    { name: 'forward', keys: ['ArrowUp', 'w', 'W'] },
+                    { name: 'backward', keys: ['ArrowDown', 's', 'S'] },
+                    { name: 'leftward', keys: ['ArrowLeft', 'a', 'A'] },
+                    { name: 'rightward', keys: ['ArrowRight', 'd', 'D'] },
+                ]}
             >
-              {gameStarted && game.current && (
-                <GameRenderer 
-                  game={game.current} 
-                  onPositionUpdate={handlePositionUpdate}
+                <Canvas shadows onCreated={(state: RootState) => { scene.current = state.scene; }}>
+                    <Suspense fallback={null}>
+                        <PerspectiveCamera
+                            makeDefault
+                            position={[0, 8, 25]}
+                            rotation={[-0.3, 0, 0]}
+                            fov={75}
+                        />
+                        <Physics
+                            gravity={[0, -19.81, 0]}
+                            defaultContactMaterial={{
+                                friction: 0.1,
+                                restitution: 0.2,
+                            }}
+                        >
+                            {gameStarted && game.current && (
+                                <GameRenderer 
+                                    game={game.current} 
+                                    onPositionUpdate={handlePositionUpdate}
+                                />
+                            )}
+                        </Physics>
+                    </Suspense>
+                </Canvas>
+            </KeyboardControls>
+            {!gameStarted && <StartMenu onStart={handleGameStart} />}
+            {gameStarted && (
+                <Minimap 
+                    playerPosition={playerPosition} 
+                    arenaSize={500} 
+                    trailPoints={trailPoints}
                 />
-              )}
-            </Physics>
-          </Suspense>
-        </Canvas>
-      </KeyboardControls>
-      {!gameStarted && <StartMenu onStart={handleGameStart} />}
-      {gameStarted && <Minimap playerPosition={playerPosition} arenaSize={500} />}
-    </>
-  );
+            )}
+        </>
+    );
 }; 
