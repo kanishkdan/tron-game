@@ -11,14 +11,23 @@ export const Ground = () => {
   const wallsRef = useRef<THREE.Group>(null);
 
   // Load and configure the grid texture
-  const texture = useLoader(TextureLoader, '/segment.jpg');
+  const texture = useLoader(TextureLoader, '/textures/segment.jpg', undefined, (error) => {
+    console.error('Error loading texture:', error);
+  });
+  
+  useEffect(() => {
+    if (texture) {
+      console.log('Texture loaded successfully:', texture);
+    }
+  }, [texture]);
+
   texture.wrapS = texture.wrapT = RepeatWrapping;
   texture.repeat.set(50, 50); // Adjusted for better tiling
   texture.magFilter = LinearFilter; // Smoother texture
   texture.minFilter = LinearFilter;
   texture.needsUpdate = true;
 
-  const SIZE_MULTIPLIER = 4; // Match the SIZE_MULTIPLIER from LightCycle.ts
+  const SIZE_MULTIPLIER = 4; // Standardized multiplier across all components
   const groundSize = 500 * SIZE_MULTIPLIER;
   const wallHeight = 20 * SIZE_MULTIPLIER;
   const wallThickness = 2 * SIZE_MULTIPLIER;
@@ -166,19 +175,11 @@ export const Ground = () => {
         receiveShadow
       >
         <planeGeometry args={[groundSize, groundSize]} />
-        <meshPhysicalMaterial 
+        <meshStandardMaterial 
           map={texture}
-          transparent
-          opacity={0.9}
-          emissive="#0fbef2"
-          emissiveIntensity={0.8} // Increased intensity
-          color="#ffffff"
-          metalness={0.8}
-          roughness={0.2}
-          clearcoat={1.0}
-          clearcoatRoughness={0.1}
-          reflectivity={1.0}
-          envMapIntensity={1.0}
+          transparent={false}
+          metalness={0.2}
+          roughness={0.8}
         />
       </mesh>
       
@@ -186,24 +187,6 @@ export const Ground = () => {
       <mesh ref={ref} visible={false}>
         <planeGeometry args={[groundSize, groundSize]} />
         <meshBasicMaterial opacity={0} transparent />
-      </mesh>
-
-      {/* Reflection plane slightly below main ground */}
-      <mesh position={[0, -0.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[groundSize, groundSize]} />
-        <meshPhysicalMaterial
-          color="#0fbef2"
-          transparent
-          opacity={0.2} // Increased opacity
-          emissive="#0fbef2"
-          emissiveIntensity={1.2} // Increased intensity
-          metalness={0.9}
-          roughness={0.1}
-          clearcoat={1.0}
-          clearcoatRoughness={0.1}
-          reflectivity={1.0}
-          envMapIntensity={1.0}
-        />
       </mesh>
 
       {/* Walls container ref */}

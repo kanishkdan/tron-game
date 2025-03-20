@@ -6,6 +6,7 @@ import StartMenu from './StartMenu';
 import { TronGame } from './core/TronGame';
 import { CameraController } from './core/CameraController';
 import { Minimap } from '../components/Minimap';
+import { Ground } from './Ground';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
@@ -126,19 +127,22 @@ export const GameScene = () => {
             >
                 <Canvas shadows onCreated={(state: RootState) => { scene.current = state.scene; }}>
                     <Suspense fallback={null}>
-                        <SceneLighting />
-                        <PerspectiveCamera
-                            makeDefault
-                            position={[0, 8, 25]}
-                            rotation={[-0.3, 0, 0]}
-                            fov={75}
-                        />
-                        {gameStarted && game.current && (
-                            <GameRenderer 
-                                game={game.current} 
-                                onPositionUpdate={handlePositionUpdate}
+                        <Physics>
+                            <SceneLighting />
+                            <Ground />
+                            <PerspectiveCamera
+                                makeDefault
+                                position={[0, 8, 25]}
+                                rotation={[-0.3, 0, 0]}
+                                fov={75}
                             />
-                        )}
+                            {gameStarted && game.current && (
+                                <GameRenderer 
+                                    game={game.current} 
+                                    onPositionUpdate={handlePositionUpdate}
+                                />
+                            )}
+                        </Physics>
                     </Suspense>
                 </Canvas>
             </KeyboardControls>

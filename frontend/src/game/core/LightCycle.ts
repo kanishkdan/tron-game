@@ -7,7 +7,7 @@ import { useKeyboardControls } from '@react-three/drei';
 export class LightCycle {
     private mesh!: THREE.Group;
     private body: CANNON.Body;
-    private readonly SIZE_MULTIPLIER = 5; // Global multiplier for map size
+    private readonly SIZE_MULTIPLIER = 4; // Standardized multiplier across all components
     private readonly MAX_SPEED = 40 * this.SIZE_MULTIPLIER;
     private readonly MIN_SPEED = 10 * this.SIZE_MULTIPLIER;
     private readonly ACCELERATION = 15 * this.SIZE_MULTIPLIER;
