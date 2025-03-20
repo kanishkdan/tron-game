@@ -27,7 +27,7 @@ export class LightCycle {
     private trailLine: THREE.Mesh | null = null;
     private trailGeometry: THREE.BufferGeometry | null = null;
     private trailMaterial: THREE.MeshBasicMaterial | null = null;
-    private readonly MAX_TRAIL_LENGTH = 300;
+    private readonly MAX_TRAIL_LENGTH = 500;
     private scene: THREE.Scene;
     private rearLight: THREE.PointLight;
     private initialScale = new THREE.Vector3(2.5, 2.5, 2.5);
@@ -45,6 +45,12 @@ export class LightCycle {
     private readonly BASE_TRAIL_HEIGHT = 2.0;
     private readonly TRAIL_WIDTH = 0.25;
     private readonly COLLISION_THRESHOLD = 2.5;
+    private readonly JUMP_FORCE = 30;
+    private readonly JUMP_COOLDOWN = 1000; // 1 second cooldown
+    private readonly JUMP_DURATION = 1000; // 0.5 seconds for jump animation
+    private lastJumpTime = 0;
+    private isJumping = false;
+    private jumpStartTime = 0;
 
     constructor(scene: THREE.Scene, world: CANNON.World, onCollision?: () => void) {
         this.scene = scene;
@@ -211,6 +217,9 @@ export class LightCycle {
                 case 'D':
                     this.move('right');
                     break;
+                case ' ':
+                    this.jump();
+                    break;
             }
         });
 
@@ -262,40 +271,68 @@ export class LightCycle {
             return;
         }
 
+        // Update jump physics
+        const currentTime = performance.now();
+        if (this.isJumping) {
+            const jumpProgress = (currentTime - this.jumpStartTime) / this.JUMP_DURATION;
+            
+            if (jumpProgress >= 1) {
+                // End jump
+                this.isJumping = false;
+                this.body.position.y = 0.5;
+                this.body.velocity.y = 0;
+            } else {
+                // Apply gravity during jump
+                this.body.velocity.y -= 30 * deltaTime; // Gravity
+                
+                // Ensure minimum height during jump animation
+                if (this.body.position.y < 0.5) {
+                    this.body.position.y = 0.5;
+                    this.body.velocity.y = 0;
+                    this.isJumping = false;
+                }
+            }
+        } else {
+            // Keep bike at ground level when not jumping
+            this.body.position.y = 0.5;
+            this.body.velocity.y = 0;
+        }
+
         // Check trail collisions using line segments
         if (this.trailPoints.length > 10) {
-            const bikePos = new THREE.Vector3(pos.x, 0.25, pos.z);
-            const bikeRadius = 2.0; // Approximate bike collision radius
+            const bikePos = new THREE.Vector3(pos.x, pos.y, pos.z);
+            const bikeRadius = 2.0;
             const collisionDistance = bikeRadius + this.TRAIL_WIDTH;
             
             // Skip the last 10 points to prevent immediate self-collision
             for (let i = 0; i < this.trailPoints.length - 10; i++) {
-                // Check collision with line segment between consecutive points
                 if (i + 1 < this.trailPoints.length) {
                     const p1 = this.trailPoints[i];
                     const p2 = this.trailPoints[i + 1];
                     
-                    // Calculate closest point on line segment to bike position
-                    const lineSeg = new THREE.Line3(
-                        new THREE.Vector3(p1.x, 0, p1.z), // Use ground level y for collision
-                        new THREE.Vector3(p2.x, 0, p2.z)
-                    );
-                    
-                    const closestPoint = new THREE.Vector3();
-                    lineSeg.closestPointToPoint(bikePos, true, closestPoint);
-                    
-                    const distance = bikePos.distanceTo(closestPoint);
-                    
-                    if (distance < collisionDistance) {
-                        // Collision detected with trail
-                        this.mesh.visible = false;
-                        this.body.velocity.setZero();
-                        this.currentSpeed = 0;
-                        this.onCollision?.();
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 1500);
-                        return;
+                    // Only check collision if bike is at similar height to trail segment
+                    const trailHeight = (p1.y + p2.y) / 2;
+                    if (Math.abs(bikePos.y - trailHeight) < 1.0) {
+                        const lineSeg = new THREE.Line3(
+                            new THREE.Vector3(p1.x, p1.y, p1.z),
+                            new THREE.Vector3(p2.x, p2.y, p2.z)
+                        );
+                        
+                        const closestPoint = new THREE.Vector3();
+                        lineSeg.closestPointToPoint(bikePos, true, closestPoint);
+                        
+                        const distance = bikePos.distanceTo(closestPoint);
+                        
+                        if (distance < collisionDistance) {
+                            this.mesh.visible = false;
+                            this.body.velocity.setZero();
+                            this.currentSpeed = 0;
+                            this.onCollision?.();
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 1500);
+                            return;
+                        }
                     }
                 }
             }
@@ -374,20 +411,26 @@ export class LightCycle {
         // Update velocity
         this.body.velocity.x = forward.x * this.currentSpeed;
         this.body.velocity.z = forward.z * this.currentSpeed;
-        this.body.velocity.y = 0; // Keep y velocity at 0
+        // Y velocity is handled by jump physics
     }
 
     private updateVisuals() {
         // Update mesh position and rotation
         this.mesh.position.copy(this.body.position as any);
-        this.mesh.position.y = 0.5;
         this.mesh.rotation.y = this.currentRotation;
         this.mesh.rotation.z = this.currentBankAngle;
+
+        // Add slight forward tilt during jumps
+        if (this.isJumping) {
+            this.mesh.rotation.x = -0.2;
+        } else {
+            this.mesh.rotation.x = 0;
+        }
 
         // Update rear light position with improved offset
         const rearOffset = new THREE.Vector3(
             -Math.sin(this.currentRotation) * 3,
-            1.5,  // Increased height
+            1.5,
             -Math.cos(this.currentRotation) * 3
         );
         this.rearLight.position.copy(this.mesh.position).add(rearOffset);
@@ -420,10 +463,18 @@ export class LightCycle {
         // Add new trail point only if we've moved enough
         if (!this.lastTrailPoint || 
             new THREE.Vector3(currentPos.x, 0, currentPos.z)
-                .distanceTo(new THREE.Vector3(this.lastTrailPoint.x, 0, this.lastTrailPoint.z)) > 0.5) {
+                .distanceTo(new THREE.Vector3(
+                    this.lastTrailPoint.x, 
+                    0, 
+                    this.lastTrailPoint.z
+                )) > 0.5) {
             
-            // Create the new point with fixed height
-            const newPoint = new THREE.Vector3(currentPos.x, this.BASE_TRAIL_HEIGHT, currentPos.z);
+            // Create the new point at the bike's current height
+            const newPoint = new THREE.Vector3(
+                currentPos.x, 
+                currentPos.y,  // Use actual bike height
+                currentPos.z
+            );
             
             // Calculate direction vector (for creating width)
             const direction = new THREE.Vector3();
@@ -467,25 +518,29 @@ export class LightCycle {
                     
                     segmentPerpendicular = new THREE.Vector3(-segmentDirection.z, 0, segmentDirection.x).normalize();
                     
-                    // Create the 4 corners of the ribbon segment
+                    // Calculate the bottom height for this segment
+                    const bottomHeight = Math.max(0, point.y - this.BASE_TRAIL_HEIGHT);
+                    const topHeight = point.y + this.BASE_TRAIL_HEIGHT;
+                    
+                    // Create the 4 corners of the ribbon segment with consistent height difference
                     // Top left
                     positions[i * 12] = point.x + segmentPerpendicular.x * this.TRAIL_WIDTH;
-                    positions[i * 12 + 1] = this.BASE_TRAIL_HEIGHT;
+                    positions[i * 12 + 1] = topHeight;
                     positions[i * 12 + 2] = point.z + segmentPerpendicular.z * this.TRAIL_WIDTH;
                     
                     // Top right
                     positions[i * 12 + 3] = point.x - segmentPerpendicular.x * this.TRAIL_WIDTH;
-                    positions[i * 12 + 4] = this.BASE_TRAIL_HEIGHT;
+                    positions[i * 12 + 4] = topHeight;
                     positions[i * 12 + 5] = point.z - segmentPerpendicular.z * this.TRAIL_WIDTH;
                     
                     // Bottom left
                     positions[i * 12 + 6] = point.x + segmentPerpendicular.x * this.TRAIL_WIDTH;
-                    positions[i * 12 + 7] = 0; // Ground level
+                    positions[i * 12 + 7] = bottomHeight; // Use calculated bottom height
                     positions[i * 12 + 8] = point.z + segmentPerpendicular.z * this.TRAIL_WIDTH;
                     
                     // Bottom right
                     positions[i * 12 + 9] = point.x - segmentPerpendicular.x * this.TRAIL_WIDTH;
-                    positions[i * 12 + 10] = 0; // Ground level
+                    positions[i * 12 + 10] = bottomHeight; // Use calculated bottom height
                     positions[i * 12 + 11] = point.z - segmentPerpendicular.z * this.TRAIL_WIDTH;
                     
                     // Create faces (triangles) - only if we have a next point
@@ -514,13 +569,13 @@ export class LightCycle {
                 this.trailGeometry.setIndex(indices);
                 this.trailGeometry.computeVertexNormals();
                 
-                // Update trail light
-                this.trailLight.position.set(newPoint.x, this.BASE_TRAIL_HEIGHT + 0.5, newPoint.z);
+                // Update trail light to follow the current height
+                this.trailLight.position.set(newPoint.x, newPoint.y + 0.5, newPoint.z);
             } else {
                 // First point - add it and continue
                 this.trailPoints.push(newPoint);
                 this.lastTrailPoint = newPoint.clone();
-                this.trailLight.position.set(newPoint.x, this.BASE_TRAIL_HEIGHT + 0.5, newPoint.z);
+                this.trailLight.position.set(newPoint.x, newPoint.y + 0.5, newPoint.z);
             }
         }
     }
@@ -630,5 +685,15 @@ export class LightCycle {
         // Create trail light with increased intensity and range
         this.trailLight = new THREE.PointLight(0x0fbef2, 1.5, 20);
         this.scene.add(this.trailLight);
+    }
+
+    private jump() {
+        const currentTime = performance.now();
+        if (!this.isJumping && currentTime - this.lastJumpTime > this.JUMP_COOLDOWN) {
+            this.isJumping = true;
+            this.lastJumpTime = currentTime;
+            this.jumpStartTime = currentTime;
+            this.body.velocity.y = this.JUMP_FORCE;
+        }
     }
 } 
