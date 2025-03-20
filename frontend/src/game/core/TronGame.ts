@@ -6,7 +6,8 @@ import { LightCycle } from './LightCycle';
 export class TronGame {
     private scene: THREE.Scene;
     private world: CANNON.World;
-    private arena: Arena;
+    private player: LightCycle | null = null;
+    private arena: Arena | null = null;
     private players: Map<string, LightCycle> = new Map();
     private lastUpdateTime: number = 0;
     private isGameOver: boolean = false;
@@ -15,7 +16,13 @@ export class TronGame {
     constructor(scene: THREE.Scene, world: CANNON.World) {
         this.scene = scene;
         this.world = world;
-        this.arena = new Arena(scene, world);
+
+        // Create arena with configuration
+        this.arena = new Arena(scene, world, {
+            size: 500, // Size of the arena
+            wallHeight: 20, // Height of boundary walls
+            groundTexturePath: '/segment.jpg' // Using your provided texture
+        });
     }
 
     start(playerName: string) {
@@ -49,12 +56,6 @@ export class TronGame {
 
             // Check for collisions with light trails
             this.checkCollisions(cycle);
-        }
-
-        // Update arena
-        const playerCycle = this.players.values().next().value;
-        if (playerCycle) {
-            this.arena.update(deltaTime, playerCycle.getPosition().z);
         }
 
         // Continue game loop
@@ -174,7 +175,7 @@ export class TronGame {
         // Clean up resources
         this.players.forEach(cycle => cycle.dispose());
         this.players.clear();
-        this.arena.dispose();
+        this.arena?.dispose();
     }
 
     dispose() {

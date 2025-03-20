@@ -77,7 +77,8 @@ export const GameScene = () => {
           <Suspense fallback={null}>
             <PerspectiveCamera
               makeDefault
-              position={[0, 15, -30]}
+              position={[0, 8, 25]}
+              rotation={[-0.3, 0, 0]}
               fov={75}
             />
             <Physics
