@@ -11,21 +11,48 @@ export const Ground = () => {
   const wallsRef = useRef<THREE.Group>(null);
 
   // Load and configure the grid texture
-  const texture = useLoader(TextureLoader, '/textures/segment.jpg', undefined, (error) => {
+  const texture = useLoader(TextureLoader, '/textures/tron_tile.png', undefined, (error) => {
     console.error('Error loading texture:', error);
   });
   
   useEffect(() => {
     if (texture) {
       console.log('Texture loaded successfully:', texture);
+      texture.wrapS = texture.wrapT = RepeatWrapping;
+      texture.repeat.set(20, 20); // Reduced from 100 to make tiles bigger
+      texture.magFilter = LinearFilter;
+      texture.minFilter = LinearFilter;
+      texture.needsUpdate = true;
     }
   }, [texture]);
 
-  texture.wrapS = texture.wrapT = RepeatWrapping;
-  texture.repeat.set(50, 50); // Adjusted for better tiling
-  texture.magFilter = LinearFilter; // Smoother texture
-  texture.minFilter = LinearFilter;
-  texture.needsUpdate = true;
+  // Load arena materials
+  useEffect(() => {
+    const mtlLoader = new MTLLoader();
+    mtlLoader.load('/models/arena7.mtl', (materials) => {
+      materials.preload();
+      console.log("Arena materials loaded:", materials);
+
+      // Apply materials to ground
+      if (groundRef.current) {
+        const material = materials.materials['segment'];
+        if (material) {
+          const groundMaterial = new THREE.MeshPhysicalMaterial({
+            map: texture,
+            color: 0x111111,         // Slightly lighter base color
+            emissive: 0x0fbef2,      // Slight blue emission
+            emissiveMap: texture,     // Use texture for emissive areas
+            emissiveIntensity: 0.2,   // Increased emission
+            metalness: 0.7,           // Slightly less metallic
+            roughness: 0.3,           // Keep low roughness for shine
+            transparent: true,
+            opacity: 0.8             // More opacity to make it more visible
+          });
+          groundRef.current.material = groundMaterial;
+        }
+      }
+    });
+  }, [texture]);
 
   const SIZE_MULTIPLIER = 4; // Standardized multiplier across all components
   const groundSize = 500 * SIZE_MULTIPLIER;
@@ -104,60 +131,6 @@ export const Ground = () => {
     opacity: 0.9, // Increased opacity
   });
   
-  // Load arena7.mtl for materials
-  useEffect(() => {
-    const mtlLoader = new MTLLoader();
-    const objLoader = new OBJLoader();
-    
-    mtlLoader.load('/models/arena7.mtl', (materials) => {
-      materials.preload();
-      console.log("Arena materials loaded", materials);
-      
-      // Apply materials to ground
-      if (groundRef.current) {
-        const material = materials.materials['Material.001'];
-        if (material) {
-          // Convert to MeshPhysicalMaterial to use advanced properties
-          const physicalMaterial = new THREE.MeshPhysicalMaterial({
-            color: 0x0fbef2, // Bright cyan
-            emissive: 0x0fbef2,
-            emissiveIntensity: 1.0,
-            opacity: 0.8,
-            transparent: true,
-            metalness: 0.9,
-            roughness: 0.1
-          });
-          
-          // Apply to ground
-          groundRef.current.material = physicalMaterial;
-        }
-      }
-      
-      // Apply segment material to walls if available
-      if (wallsRef.current) {
-        const segmentMaterial = materials.materials['segment'];
-        if (segmentMaterial) {
-          // Create new material based on segment material properties
-          const wallsMaterial = new THREE.MeshPhysicalMaterial({
-            map: texture,
-            color: 0x0fbef2,
-            emissive: 0x0fbef2,
-            emissiveIntensity: 1.0,
-            metalness: 0.9,
-            roughness: 0.1
-          });
-          
-          // Apply to all wall children
-          wallsRef.current.traverse((child) => {
-            if (child instanceof THREE.Mesh) {
-              child.material = wallsMaterial.clone();
-            }
-          });
-        }
-      }
-    });
-  }, [texture]);
-
   // Use effect to combine the refs
   useEffect(() => {
     if (ref.current && groundRef.current) {
@@ -175,11 +148,16 @@ export const Ground = () => {
         receiveShadow
       >
         <planeGeometry args={[groundSize, groundSize]} />
-        <meshStandardMaterial 
+        <meshPhysicalMaterial 
           map={texture}
-          transparent={false}
-          metalness={0.2}
-          roughness={0.8}
+          color={0x111111}           // Match the material above
+          emissive={0x0fbef2}        // Match the material above
+          emissiveMap={texture}
+          emissiveIntensity={0.2}
+          metalness={0.7}
+          roughness={0.3}
+          transparent={true}
+          opacity={0.8}
         />
       </mesh>
       
