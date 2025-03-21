@@ -1,4 +1,4 @@
-import { usePlane, useSphere } from '@react-three/cannon';
+import { usePlane, useSphere, useBox } from '@react-three/cannon';
 import * as THREE from 'three';
 import { useLoader } from '@react-three/fiber';
 import { TextureLoader, RepeatWrapping, LinearFilter, BackSide } from 'three';
@@ -116,6 +116,36 @@ export const Ground = () => {
     side: THREE.DoubleSide,
   });
 
+  // Materials for ramps, jumps and structures
+  const structureMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0x111111,
+    emissive: 0x0fbef2,
+    emissiveIntensity: 0.5,
+    metalness: 0.9,
+    roughness: 0.2,
+    transparent: false,
+    opacity: 1.0
+  });
+
+  const glowEdgeMaterial = new THREE.MeshBasicMaterial({
+    color: 0x0fbef2,
+    transparent: true,
+    opacity: 0.8,
+  });
+
+  // Translucent layer material
+  const lowerLayerMaterial = new THREE.MeshPhysicalMaterial({
+    map: texture,
+    color: 0x111111,
+    emissive: 0x0fbef2,
+    emissiveMap: texture,
+    emissiveIntensity: 0.3,
+    metalness: 0.7,
+    roughness: 0.3,
+    transparent: true,
+    opacity: 0.5
+  });
+
   useEffect(() => {
     if (ref.current && groundRef.current) {
       groundRef.current.position.copy(ref.current.position);
@@ -139,13 +169,91 @@ export const Ground = () => {
     };
   }, [ref]);
 
+  // Create ramp physics bodies - reduced number and simplified
+  const rampPositions = [
+    { position: [groundSize * 0.2, 5, groundSize * 0.2] as [number, number, number], rotation: [0, Math.PI / 4, 0] as [number, number, number], size: [30, 10, 80] as [number, number, number] },
+    { position: [-groundSize * 0.3, 5, -groundSize * 0.25] as [number, number, number], rotation: [0, -Math.PI / 6, 0] as [number, number, number], size: [40, 15, 100] as [number, number, number] },
+  ];
+
+  // Create floor gaps (holes)
+  const holePositions = [
+    { position: [0, -5, groundSize * 0.1] as [number, number, number], size: [60, 10, 120] as [number, number, number] },
+  ];
+
   return (
     <>
-      {/* Ground */}
+      {/* Ground with holes */}
       <mesh ref={groundRef} receiveShadow>
-        <planeGeometry args={[groundSize, groundSize]} />
+        <planeGeometry args={[groundSize, groundSize, 8, 8]} />
         <primitive object={groundMaterial} />
       </mesh>
+
+      {/* Just one lower layer for effect without performance hit */}
+      <mesh 
+        position={[0, -40, 0]} 
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[groundSize, groundSize, 8, 8]} />
+        <primitive object={lowerLayerMaterial} />
+      </mesh>
+
+      {/* Ramps and jumps - optimized */}
+      {rampPositions.map((ramp, index) => {
+        // Physics for ramp
+        const [rampRef] = useBox<THREE.Mesh>(() => ({
+          mass: 0,
+          type: 'Static',
+          position: ramp.position,
+          rotation: ramp.rotation,
+          args: ramp.size,
+        }));
+
+        return (
+          <group key={`ramp-${index}`}>
+            {/* Main ramp structure */}
+            <mesh 
+              ref={rampRef}
+              position={ramp.position}
+              rotation={ramp.rotation}
+              castShadow 
+              receiveShadow
+            >
+              <boxGeometry args={ramp.size} />
+              <primitive object={structureMaterial} />
+            </mesh>
+            
+            {/* Glowing edges */}
+            <mesh 
+              position={ramp.position}
+              rotation={ramp.rotation}
+              scale={[1.01, 1.01, 1.01]}
+            >
+              <boxGeometry args={ramp.size} />
+              <meshBasicMaterial 
+                color={0x0fbef2} 
+                wireframe 
+                transparent 
+                opacity={0.6}
+              />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* Floor gaps/holes */}
+      {holePositions.map((hole, index) => (
+        <group key={`hole-${index}`}>
+          {/* Hole outline glow */}
+          <mesh
+            position={[hole.position[0], 0.1, hole.position[2]]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
+            <ringGeometry args={[hole.size[0] * 0.5 - 2, hole.size[0] * 0.5, 24]} />
+            <meshBasicMaterial color={0x0fbef2} transparent opacity={0.8} side={THREE.DoubleSide} />
+          </mesh>
+        </group>
+      ))}
 
       {/* Dome */}
       <mesh ref={domeRef} receiveShadow>
@@ -190,19 +298,14 @@ export const Ground = () => {
       {/* Ambient lighting */}
       <ambientLight intensity={0.2} />
 
-      {/* Ground accent lighting */}
-      {[-1, 1].map((x) => 
-        [-1, 1].map((z) => (
-          <pointLight
-            key={`${x}-${z}`}
-            position={[x * groundSize/3, domeHeight * 0.1, z * groundSize/3]}
-            intensity={0.4}
-            color={0x0fbef2}
-            distance={groundSize * 0.5}
-            decay={2}
-          />
-        ))
-      )}
+      {/* Ground accent lighting - reduced count */}
+      <pointLight
+        position={[0, domeHeight * 0.1, 0]}
+        intensity={0.8}
+        color={0x0fbef2}
+        distance={groundSize * 0.7}
+        decay={2}
+      />
     </>
   );
 }; 
