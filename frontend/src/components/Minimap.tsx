@@ -5,12 +5,19 @@ interface MinimapProps {
     playerPosition: { x: number; z: number };
     arenaSize: number;
     trailPoints?: { x: number; z: number }[];
+    enemyPositions?: { id: string, position: { x: number; z: number } }[];
 }
 
-export const Minimap = ({ playerPosition, arenaSize, trailPoints = [] }: MinimapProps) => {
+export const Minimap = ({ 
+    playerPosition, 
+    arenaSize, 
+    trailPoints = [],
+    enemyPositions = []
+}: MinimapProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const MINIMAP_SIZE = 150;
     const PLAYER_DOT_SIZE = 4;
+    const ENEMY_DOT_SIZE = 3;
     const TRAIL_WIDTH = 2;
 
     useEffect(() => {
@@ -79,6 +86,18 @@ export const Minimap = ({ playerPosition, arenaSize, trailPoints = [] }: Minimap
             ctx.stroke();
         }
 
+        // Draw enemy positions
+        if (enemyPositions.length > 0) {
+            ctx.fillStyle = '#ff3333'; // Bright red for enemies
+            
+            enemyPositions.forEach(enemy => {
+                const enemyPos = worldToMinimap(enemy.position);
+                ctx.beginPath();
+                ctx.arc(enemyPos.x, enemyPos.y, ENEMY_DOT_SIZE, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
         // Draw player position
         const minimapPos = worldToMinimap(playerPosition);
         ctx.fillStyle = '#0fbef2';
@@ -91,8 +110,9 @@ export const Minimap = ({ playerPosition, arenaSize, trailPoints = [] }: Minimap
         ctx.font = '8px Arial';
         ctx.fillText(`Arena: ${arenaSize}x${arenaSize}`, 5, 10);
         ctx.fillText(`Player: ${Math.round(playerPosition.x)},${Math.round(playerPosition.z)}`, 5, 20);
+        ctx.fillText(`Enemies: ${enemyPositions.length}`, 5, 30);
 
-    }, [playerPosition, arenaSize, trailPoints]);
+    }, [playerPosition, arenaSize, trailPoints, enemyPositions]);
 
     return (
         <>

@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Any
 from ..models.player import Player
 
 class GameState:
@@ -8,12 +8,12 @@ class GameState:
         self.game_phase = "waiting"  # waiting, playing, finished
         self.current_round = 0
         self.max_players = 16
-        self.min_players = 8
+        self.min_players = 2  # Reduced for easier testing
         
     def add_player(self, player_id: str) -> bool:
         if len(self.players) >= self.max_players:
             return False
-        self.players[player_id] = Player(player_id)
+        self.players[player_id] = Player(id=player_id)
         return True
     
     def remove_player(self, player_id: str):
@@ -22,12 +22,14 @@ class GameState:
         if player_id in self.eliminated_players:
             self.eliminated_players.remove(player_id)
     
-    def update_player_position(self, player_id: str, position: dict):
+    def update_player_position(self, player_id: str, position: Dict[str, Any]):
         if player_id in self.players:
-            self.players[player_id].position = position
+            # Update using the player's update_position method
+            self.players[player_id].update_position(position)
     
     def eliminate_player(self, player_id: str):
         if player_id in self.players and player_id not in self.eliminated_players:
+            self.players[player_id].eliminate()
             self.eliminated_players.append(player_id)
     
     def get_state(self) -> dict:

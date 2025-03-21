@@ -3,6 +3,7 @@ import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import * as CANNON from 'cannon-es';
 import { useKeyboardControls } from '@react-three/drei';
+import { ColorUtils, TronColor } from '../utils/ColorUtils';
 
 // Declare global gameRenderer property for TypeScript
 declare global {
@@ -13,6 +14,7 @@ declare global {
 
 export class LightCycle {
     private mesh!: THREE.Group;
+    private modelContainer!: THREE.Group; // New container to adjust model position
     private body: CANNON.Body;
     private readonly SIZE_MULTIPLIER = 4; // Standardized multiplier across all components
     private readonly MAX_SPEED = 20 * this.SIZE_MULTIPLIER;
@@ -34,10 +36,10 @@ export class LightCycle {
     private trailLine: THREE.Mesh | null = null;
     private trailGeometry: THREE.BufferGeometry | null = null;
     private trailMaterial: THREE.MeshBasicMaterial | null = null;
-    private readonly MAX_TRAIL_LENGTH = 500;
+    private readonly MAX_TRAIL_LENGTH = 250;
     private scene: THREE.Scene;
     private rearLight: THREE.PointLight;
-    private initialScale = new THREE.Vector3(2.5, 2.5, 2.5);
+    private initialScale = new THREE.Vector3(3.0, 2.5, 2.5);
     private lastGridPosition: THREE.Vector3;
     private isTurning = false;
     private turnStartTime = 0;
@@ -49,32 +51,38 @@ export class LightCycle {
     private currentTrailLength = 100;
     private totalTrailDistance = 0;
     private onCollision?: () => void; // Callback for collision handling
-    private readonly BASE_TRAIL_HEIGHT = 2.0;
+    private readonly BASE_TRAIL_HEIGHT = 3.0;
     private readonly TRAIL_WIDTH = 0.25;
     private readonly COLLISION_THRESHOLD = 2.5;
     private readonly JUMP_FORCE = 30;
-    private readonly JUMP_COOLDOWN = 1000; // 1 second cooldown
+    private readonly JUMP_COOLDOWN = 3000; // 1 second cooldown
     private readonly JUMP_DURATION = 1000; // 0.5 seconds for jump animation
     private lastJumpTime = 0;
     private isJumping = false;
     private jumpStartTime = 0;
+    private bikeColor: TronColor;
+    private readonly GROUND_HEIGHT = 0.05;
+    private readonly PHYSICS_HEIGHT = 0.25; // New constant for physics body height
 
     constructor(scene: THREE.Scene, world: CANNON.World, onCollision?: () => void) {
         this.scene = scene;
         this.onCollision = onCollision;
+        
+        // Get random color for this bike
+        this.bikeColor = ColorUtils.getRandomTronColor();
 
-        // Create rear light with increased intensity
-        this.rearLight = new THREE.PointLight(0x0fbef2, 3, 40);
+        // Create rear light with increased intensity and bike color
+        this.rearLight = new THREE.PointLight(this.bikeColor.hex, 3, 40);
         scene.add(this.rearLight);
 
-        // Initialize trail system
+        // Initialize trail system with bike color
         this.initLightTrail();
 
-        // Create physics body with adjusted dimensions and properties
-        const shape = new CANNON.Box(new CANNON.Vec3(3, 0.5, 6));
+        // Create physics body with reduced height
+        const shape = new CANNON.Box(new CANNON.Vec3(3, this.PHYSICS_HEIGHT, 6));
         this.body = new CANNON.Body({
             mass: 1,
-            position: new CANNON.Vec3(0, 0.5, 0),
+            position: new CANNON.Vec3(0, this.PHYSICS_HEIGHT, 0), // Position at half height
             shape: shape,
             linearDamping: 0.5,
             angularDamping: 0.8,
@@ -109,99 +117,7 @@ export class LightCycle {
         this.currentRotation = 0;
 
         // Load bike model with adjusted position
-        const mtlLoader = new MTLLoader();
-        const objLoader = new OBJLoader();
-
-        mtlLoader.load('/models/bike2.mtl', (materials) => {
-            materials.preload();
-            objLoader.setMaterials(materials);
-            objLoader.load('/models/bike2.obj', (object) => {
-                this.mesh = object;
-                this.mesh.scale.copy(this.initialScale);
-                
-                // Create Tron-style materials
-                const bodyMaterial = new THREE.MeshPhysicalMaterial({
-                    color: 0x000000, // Deep black base
-                    metalness: 0.9,
-                    roughness: 0.3,
-                    clearcoat: 1.0,
-                    clearcoatRoughness: 0.1
-                });
-
-                const glowMaterial = new THREE.MeshPhysicalMaterial({
-                    color: 0x0fbef2, // Bright blue glow
-                    emissive: 0x0fbef2,
-                    emissiveIntensity: 1.0,
-                    metalness: 0.9,
-                    roughness: 0.2,
-                    clearcoat: 1.0,
-                    clearcoatRoughness: 0.1,
-                    transparent: true,
-                    opacity: 0.9
-                });
-
-                // Apply materials based on mesh names/positions
-                this.mesh.traverse((child) => {
-                    if (child instanceof THREE.Mesh) {
-                        // Store original geometry for potential edge detection
-                        const geometry = child.geometry;
-                        
-                        // Create edge geometry for highlights
-                        const edges = new THREE.EdgesGeometry(geometry, 30); // 30-degree threshold
-                        const edgesMesh = new THREE.LineSegments(
-                            edges,
-                            new THREE.LineBasicMaterial({ 
-                                color: 0x0fbef2,
-                                transparent: true,
-                                opacity: 0.9,
-                                linewidth: 1
-                            })
-                        );
-                        child.add(edgesMesh);
-
-                        // Apply materials based on part position/name
-                        if (child.name.toLowerCase().includes('wheel') || 
-                            child.name.toLowerCase().includes('rim') ||
-                            child.name.toLowerCase().includes('engine')) {
-                            child.material = glowMaterial;
-                        } else {
-                            child.material = bodyMaterial;
-                        }
-
-                        // Add point lights at key positions for extra glow
-                        if (child.name.toLowerCase().includes('wheel')) {
-                            const wheelLight = new THREE.PointLight(0x0fbef2, 1, 3);
-                            child.add(wheelLight);
-                        }
-
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
-                
-                // Position and add to scene with adjusted height
-                this.mesh.position.copy(this.body.position as any);
-                this.mesh.position.y = 0.5;
-                scene.add(this.mesh);
-                
-                // Initialize initial trail position
-                this.lastTrailPoint = new THREE.Vector3(
-                    this.mesh.position.x,
-                    this.BASE_TRAIL_HEIGHT,
-                    this.mesh.position.z
-                );
-
-                // Add bike headlight
-                const headlight = new THREE.SpotLight(0x0fbef2, 2, 100, Math.PI / 6, 0.5, 2);
-                headlight.position.set(0, 1, 2); // Positioned at front of bike
-                this.mesh.add(headlight);
-
-                // Add subtle ambient glow
-                const bikeGlow = new THREE.PointLight(0x0fbef2, 0.5, 5);
-                bikeGlow.position.set(0, 1, 0);
-                this.mesh.add(bikeGlow);
-            });
-        });
+        this.loadBikeModel();
 
         // Initialize last grid position
         this.lastGridPosition = new THREE.Vector3(0, 0, 0);
@@ -245,7 +161,7 @@ export class LightCycle {
     }
 
     update(deltaTime: number) {
-        if (!this.mesh) return;
+        if (!this.modelContainer) return;
 
         const currentTime = performance.now();
         const timeSinceLastUpdate = currentTime - this.lastUpdateTime;
@@ -263,12 +179,12 @@ export class LightCycle {
 
     private updatePhysics(deltaTime: number) {
         // Check boundary collisions
-        const pos = this.mesh.position;
+        const pos = this.modelContainer.position;
         const boundary = this.ARENA_SIZE / 2 - 5;
         
         if (Math.abs(pos.x) > boundary || Math.abs(pos.z) > boundary) {
             // Hide the bike and stop movement
-            this.mesh.visible = false;
+            this.modelContainer.visible = false;
             this.body.velocity.setZero();
             this.currentSpeed = 0;
             this.onCollision?.();
@@ -284,24 +200,20 @@ export class LightCycle {
             const jumpProgress = (currentTime - this.jumpStartTime) / this.JUMP_DURATION;
             
             if (jumpProgress >= 1) {
-                // End jump
                 this.isJumping = false;
-                this.body.position.y = 0.5;
+                this.body.position.y = this.PHYSICS_HEIGHT;
                 this.body.velocity.y = 0;
             } else {
-                // Apply gravity during jump
-                this.body.velocity.y -= 30 * deltaTime; // Gravity
+                this.body.velocity.y -= 30 * deltaTime;
                 
-                // Ensure minimum height during jump animation
-                if (this.body.position.y < 0.5) {
-                    this.body.position.y = 0.5;
+                if (this.body.position.y < this.PHYSICS_HEIGHT) {
+                    this.body.position.y = this.PHYSICS_HEIGHT;
                     this.body.velocity.y = 0;
                     this.isJumping = false;
                 }
             }
         } else {
-            // Keep bike at ground level when not jumping
-            this.body.position.y = 0.5;
+            this.body.position.y = this.PHYSICS_HEIGHT;
             this.body.velocity.y = 0;
         }
 
@@ -331,7 +243,7 @@ export class LightCycle {
                         const distance = bikePos.distanceTo(closestPoint);
                         
                         if (distance < collisionDistance) {
-                    this.mesh.visible = false;
+                    this.modelContainer.visible = false;
                     this.body.velocity.setZero();
                     this.currentSpeed = 0;
                     this.onCollision?.();
@@ -422,50 +334,29 @@ export class LightCycle {
     }
 
     private updateVisuals() {
-        // Update mesh position and rotation
-        this.mesh.position.copy(this.body.position as any);
-        this.mesh.rotation.y = this.currentRotation;
-        this.mesh.rotation.z = this.currentBankAngle;
+        if (!this.modelContainer) return;
+        
+        // Update container position (the mesh itself is offset inside)
+        this.modelContainer.position.copy(this.body.position as any);
+        
+        // Update rotation
+        this.modelContainer.rotation.y = this.currentRotation;
+        this.modelContainer.rotation.z = this.currentBankAngle;
+        this.modelContainer.rotation.x = this.isJumping ? -0.2 : 0;
 
-        // Add slight forward tilt during jumps
-        if (this.isJumping) {
-            this.mesh.rotation.x = -0.2;
-        } else {
-            this.mesh.rotation.x = 0;
-        }
-
-        // Update rear light position with improved offset
+        // Update rear light - now relative to container position
         const rearOffset = new THREE.Vector3(
             -Math.sin(this.currentRotation) * 3,
-            1.5,
+            1.0,
             -Math.cos(this.currentRotation) * 3
         );
-        this.rearLight.position.copy(this.mesh.position).add(rearOffset);
-    }
-
-    private calculateTrailHeight(): number {
-        // Speed-based height with much more dramatic effect
-        const speedFactor = (this.currentSpeed - this.MIN_SPEED) / (this.MAX_SPEED - this.MIN_SPEED);
-        let height = this.BASE_TRAIL_HEIGHT + (speedFactor * 8.0); // Much larger multiplier
-
-        // Add extra height during turns with more dramatic effect
-        if (this.turnDirection !== 0) {
-            const turnIntensity = Math.abs(this.currentBankAngle / this.BANK_ANGLE);
-            height *= (1 + (turnIntensity * 1.5)); // More dramatic turn effect
-        }
-
-        // Add a slight wave effect based on distance
-        const waveFactor = Math.sin(this.totalTrailDistance * 0.05) * 2.0;
-        height += waveFactor;
-
-        // Clamp the height to prevent extremes
-        return Math.min(Math.max(height, this.BASE_TRAIL_HEIGHT), this.MAX_TRAIL_LENGTH);
+        this.rearLight.position.copy(this.modelContainer.position).add(rearOffset);
     }
 
     private updateTrail() {
-        if (!this.mesh || !this.trailGeometry || !this.trailLine) return;
+        if (!this.modelContainer || !this.trailGeometry || !this.trailLine) return;
 
-        const currentPos = this.mesh.position;
+        const currentPos = this.modelContainer.position;
         
         // Add new trail point only if we've moved enough
         if (!this.lastTrailPoint || 
@@ -598,7 +489,7 @@ export class LightCycle {
     }
 
     getPosition(): THREE.Vector3 {
-        return this.mesh ? this.mesh.position : new THREE.Vector3();
+        return this.modelContainer ? this.modelContainer.position : new THREE.Vector3();
     }
 
     getRotation(): number {
@@ -617,7 +508,15 @@ export class LightCycle {
         return this.turnDirection;
     }
     
+    // Add method to get the physics body
+    getBody(): CANNON.Body {
+        return this.body;
+    }
+    
     dispose() {
+        // Release the color when the bike is disposed
+        ColorUtils.releaseColor(this.bikeColor.hex);
+        
         // Remove event listeners
         window.removeEventListener('keydown', this.handleInput);
         window.removeEventListener('keyup', this.handleInput);
@@ -637,18 +536,8 @@ export class LightCycle {
         }
         
         // Remove bike model
-        if (this.mesh && this.mesh.parent) {
-            this.mesh.parent.remove(this.mesh);
-            this.mesh.traverse((child) => {
-                if (child instanceof THREE.Mesh) {
-                    child.geometry.dispose();
-                    if (Array.isArray(child.material)) {
-                        child.material.forEach(m => m.dispose());
-                    } else {
-                        child.material.dispose();
-                    }
-                }
-            });
+        if (this.modelContainer && this.modelContainer.parent) {
+            this.modelContainer.parent.remove(this.modelContainer);
         }
 
         // Clean up trail resources
@@ -673,7 +562,7 @@ export class LightCycle {
         // Create trail geometry for 3D extruded trail
         this.trailGeometry = new THREE.BufferGeometry();
         this.trailMaterial = new THREE.MeshBasicMaterial({
-            color: 0x0fbef2,
+            color: this.bikeColor.hex,
             transparent: true,
             opacity: 0.9,
             side: THREE.DoubleSide
@@ -689,8 +578,8 @@ export class LightCycle {
         this.trailLine.frustumCulled = false;
         this.scene.add(this.trailLine);
 
-        // Create trail light with increased intensity and range
-        this.trailLight = new THREE.PointLight(0x0fbef2, 1.5, 20);
+        // Create trail light with increased intensity and bike color
+        this.trailLight = new THREE.PointLight(this.bikeColor.hex, 1.5, 20);
         this.scene.add(this.trailLight);
     }
 
@@ -702,5 +591,104 @@ export class LightCycle {
             this.jumpStartTime = currentTime;
             this.body.velocity.y = this.JUMP_FORCE;
         }
+    }
+
+    private loadBikeModel() {
+        const mtlLoader = new MTLLoader();
+        const objLoader = new OBJLoader();
+
+        // Create a container group to position the bike correctly
+        this.modelContainer = new THREE.Group();
+        this.scene.add(this.modelContainer);
+
+        mtlLoader.load('/models/bike2.mtl', (materials) => {
+            materials.preload();
+            objLoader.setMaterials(materials);
+            objLoader.load('/models/bike2.obj', (object) => {
+                this.mesh = object;
+                this.mesh.scale.copy(this.initialScale);
+                
+                // Move the model DOWN so wheels touch the ground
+                // This is the key fix - offset the model within its container
+                this.mesh.position.y = -1.0; // Adjust this value as needed to get wheels on ground
+                
+                // Create materials
+                const bodyMaterial = new THREE.MeshPhysicalMaterial({
+                    color: 0x000000,
+                    metalness: 0.9,
+                    roughness: 0.3,
+                    clearcoat: 1.0,
+                    clearcoatRoughness: 0.1
+                });
+
+                const glowMaterial = new THREE.MeshPhysicalMaterial({
+                    color: this.bikeColor.hex,
+                    emissive: this.bikeColor.hex,
+                    emissiveIntensity: 1.0,
+                    metalness: 0.9,
+                    roughness: 0.2,
+                    clearcoat: 1.0,
+                    clearcoatRoughness: 0.1,
+                    transparent: true,
+                    opacity: 0.9
+                });
+
+                // Apply materials and create edge highlights
+                this.mesh.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        // Add edge highlights
+                        const edges = new THREE.EdgesGeometry(child.geometry, 30);
+                        const edgesMesh = new THREE.LineSegments(
+                            edges,
+                            new THREE.LineBasicMaterial({ 
+                                color: this.bikeColor.hex,
+                                transparent: true,
+                                opacity: 0.9,
+                                linewidth: 1
+                            })
+                        );
+                        child.add(edgesMesh);
+
+                        // Apply main materials
+                        child.material = child.name.toLowerCase().match(/wheel|rim|engine/) 
+                            ? glowMaterial 
+                            : bodyMaterial;
+
+                        // Add wheel lights
+                        if (child.name.toLowerCase().includes('wheel')) {
+                            const wheelLight = new THREE.PointLight(this.bikeColor.hex, 1, 3);
+                            child.add(wheelLight);
+                        }
+
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                // Add bike lights
+                const headlight = new THREE.SpotLight(this.bikeColor.hex, 2, 100, Math.PI / 6, 0.5, 2);
+                headlight.position.set(0, 1, 2);
+                this.mesh.add(headlight);
+
+                const bikeGlow = new THREE.PointLight(this.bikeColor.hex, 0.5, 5);
+                bikeGlow.position.set(0, 1, 0);
+                this.mesh.add(bikeGlow);
+
+                // Add model to container instead of directly to scene
+                this.modelContainer.add(this.mesh);
+                
+                // Initialize trail
+                this.lastTrailPoint = new THREE.Vector3(
+                    this.mesh.position.x,
+                    this.BASE_TRAIL_HEIGHT,
+                    this.mesh.position.z
+                );
+            });
+        });
+    }
+
+    // Add getter for bike color (for minimap)
+    getBikeColor(): number {
+        return this.bikeColor.hex;
     }
 } 

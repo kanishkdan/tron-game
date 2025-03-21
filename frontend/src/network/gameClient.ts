@@ -1,5 +1,3 @@
-import { io, Socket } from 'socket.io-client';
-
 export type GameState = {
   players: Record<string, Player>;
   eliminated_players: string[];
@@ -16,6 +14,7 @@ export type Player = {
     x: number;
     y: number;
     z: number;
+    rotation?: number;
   } | null;
   is_eliminated: boolean;
   score: number;
@@ -27,40 +26,96 @@ export type GameEvent = {
 };
 
 export class GameClient {
-  private socket: Socket | null = null;
+  private socket: WebSocket | null = null;
   private playerId: string | null = null;
   private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectTimeout: number = 1000; // Start with 1 second
+  private sessionStorageKey = 'tron_game_player_session';
 
-  constructor(private serverUrl: string = 'http://localhost:8000') {}
+  constructor(private serverUrl: string = 'ws://localhost:8000') {}
 
-  connect(playerId: string): Promise<void> {
+  connect(playerName: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.socket = io(this.serverUrl, {
-        transports: ['websocket'],
-        query: { player_id: playerId },
-      });
+      try {
+        // Check for existing player ID in session storage
+        const storedPlayerId = localStorage.getItem(this.sessionStorageKey);
+        
+        // Use stored ID or generate a new one with the player name
+        this.playerId = storedPlayerId || `${playerName}-${this.generateSessionId()}`;
+        
+        // Store the player ID for future sessions
+        localStorage.setItem(this.sessionStorageKey, this.playerId);
+        
+        console.log(`Connecting with player ID: ${this.playerId}`);
+        
+        this.socket = new WebSocket(`${this.serverUrl}/ws/${this.playerId}`);
 
-      this.socket.on('connect', () => {
-        this.playerId = playerId;
-        resolve();
-      });
+        this.socket.onopen = () => {
+          console.log('WebSocket connected');
+          this.reconnectAttempts = 0;
+          this.reconnectTimeout = 1000;
+          resolve();
+        };
 
-      this.socket.on('connect_error', (error) => {
+        this.socket.onclose = (event) => {
+          console.log('WebSocket closed:', event);
+          this.handleDisconnect();
+        };
+
+        this.socket.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          reject(error);
+        };
+
+        this.socket.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            this.handleGameEvent(message);
+          } catch (error) {
+            console.error('Error parsing message:', error);
+          }
+        };
+      } catch (error) {
         reject(error);
-      });
-
-      this.socket.on('game_event', (event: GameEvent) => {
-        this.handleGameEvent(event);
-      });
+      }
     });
+  }
+
+  // Generate a random session ID
+  private generateSessionId(): string {
+    return Math.random().toString(36).substring(2, 12);
+  }
+
+  // Clear session (useful for testing)
+  clearSession(): void {
+    localStorage.removeItem(this.sessionStorageKey);
+  }
+
+  private handleDisconnect() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts && this.playerId) {
+      console.log(`Attempting to reconnect (${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})...`);
+      setTimeout(() => {
+        this.reconnectAttempts++;
+        this.connect(this.playerId!.split('-')[0]).catch(() => {
+          // Exponential backoff
+          this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, 10000);
+        });
+      }, this.reconnectTimeout);
+    }
   }
 
   disconnect() {
     if (this.socket) {
-      this.socket.disconnect();
+      this.socket.close();
       this.socket = null;
       this.playerId = null;
     }
+  }
+
+  getPlayerId(): string | null {
+    return this.playerId;
   }
 
   on(event: string, handler: (data: any) => void) {
@@ -80,12 +135,15 @@ export class GameClient {
     }
   }
 
-  updatePosition(position: { x: number; y: number; z: number }) {
-    if (this.socket && this.playerId) {
-      this.socket.emit('player_move', {
-        player_id: this.playerId,
-        position,
-      });
+  updatePosition(position: { x: number; y: number; z: number; rotation?: number }) {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN && this.playerId) {
+      this.socket.send(JSON.stringify({
+        type: 'player_move',
+        data: {
+          player_id: this.playerId,
+          position
+        }
+      }));
     }
   }
 
