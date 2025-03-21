@@ -4,6 +4,13 @@ import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import * as CANNON from 'cannon-es';
 import { useKeyboardControls } from '@react-three/drei';
 
+// Declare global gameRenderer property for TypeScript
+declare global {
+    interface Window {
+        gameRenderer?: THREE.WebGLRenderer;
+    }
+}
+
 export class LightCycle {
     private mesh!: THREE.Group;
     private body: CANNON.Body;
@@ -324,14 +331,14 @@ export class LightCycle {
                         const distance = bikePos.distanceTo(closestPoint);
                         
                         if (distance < collisionDistance) {
-                            this.mesh.visible = false;
-                            this.body.velocity.setZero();
-                            this.currentSpeed = 0;
-                            this.onCollision?.();
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 1500);
-                            return;
+                    this.mesh.visible = false;
+                    this.body.velocity.setZero();
+                    this.currentSpeed = 0;
+                    this.onCollision?.();
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                    return;
                         }
                     }
                 }
@@ -482,10 +489,10 @@ export class LightCycle {
             if (this.trailPoints.length > 0) {
                 // Get direction from last point to current point
                 direction.subVectors(newPoint, this.lastTrailPoint!).normalize();
-                
-                // Calculate perpendicular vector for width
-                const perpendicular = new THREE.Vector3(-direction.z, 0, direction.x).normalize();
-                
+            
+            // Calculate perpendicular vector for width
+            const perpendicular = new THREE.Vector3(-direction.z, 0, direction.x).normalize();
+            
                 // Add new point
                 this.trailPoints.push(newPoint);
                 this.lastTrailPoint = newPoint.clone();

@@ -10,14 +10,14 @@ export const Ground = () => {
   const moonRef = useRef<THREE.Group>(null);
 
   // Load and configure the grid texture
-  const texture = useLoader(TextureLoader, '/textures/segment.jpg', undefined, (error) => {
+  const texture = useLoader(TextureLoader, '/textures/tron_tile.png', undefined, (error) => {
     console.error('Error loading texture:', error);
   });
   
   useEffect(() => {
     if (texture) {
       texture.wrapS = texture.wrapT = RepeatWrapping;
-      texture.repeat.set(20, 20);
+      texture.repeat.set(50, 50);
       texture.magFilter = LinearFilter;
       texture.minFilter = LinearFilter;
       texture.needsUpdate = true;

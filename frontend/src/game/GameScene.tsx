@@ -50,8 +50,16 @@ const GameRenderer = ({ game, onPositionUpdate }: {
     game: TronGame; 
     onPositionUpdate: (pos: { x: number; z: number }, trailPoints: { x: number; z: number }[]) => void 
 }) => {
-    const { camera } = useThree();
+    const { camera, gl } = useThree();
     const cameraController = useRef<CameraController>();
+
+    // Store the renderer in the global window object for resolution scaling
+    useEffect(() => {
+        window.gameRenderer = gl;
+        return () => {
+            window.gameRenderer = undefined;
+        };
+    }, [gl]);
 
     useEffect(() => {
         if (game.getPlayer()) {
@@ -148,11 +156,13 @@ export const GameScene = () => {
             </KeyboardControls>
             {!gameStarted && <StartMenu onStart={handleGameStart} />}
             {gameStarted && (
-                <Minimap 
-                    playerPosition={playerPosition} 
-                    arenaSize={arenaSize} 
-                    trailPoints={trailPoints}
-                />
+                <>
+                    <Minimap 
+                        playerPosition={playerPosition} 
+                        arenaSize={arenaSize} 
+                        trailPoints={trailPoints}
+                    />
+                </>
             )}
         </>
     );

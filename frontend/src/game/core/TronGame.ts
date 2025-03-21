@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { Arena } from './Arena';
 import { LightCycle } from './LightCycle';
+import { PerformanceManager } from './PerformanceManager';
 
 export class TronGame {
     private scene: THREE.Scene;
@@ -18,6 +19,9 @@ export class TronGame {
     constructor(scene: THREE.Scene, world: CANNON.World) {
         this.scene = scene;
         this.world = world;
+
+        // Initialize performance manager
+        PerformanceManager.getInstance();
 
         // Create arena with configuration
         this.arena = new Arena(scene, world, {
@@ -54,6 +58,9 @@ export class TronGame {
         const currentTime = performance.now();
         const deltaTime = (currentTime - this.lastUpdateTime) / 1000; // Convert to seconds
         this.lastUpdateTime = currentTime;
+
+        // Update performance manager
+        PerformanceManager.getInstance().update();
 
         // Update physics world
         this.world.step(1/60, deltaTime, 3);

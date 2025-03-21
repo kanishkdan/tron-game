@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { PerformanceManager } from '../game/core/PerformanceManager';
 
 export const FpsCounter = () => {
     const [fps, setFps] = useState(0);
     const [frames, setFrames] = useState(0);
     const [lastTime, setLastTime] = useState(performance.now());
+    const [resScale, setResScale] = useState(100);
 
     useEffect(() => {
         let animationFrameId: number;
@@ -16,6 +18,10 @@ export const FpsCounter = () => {
                 setFps(Math.round((frames * 1000) / deltaTime));
                 setFrames(0);
                 setLastTime(currentTime);
+                
+                // Update resolution scale from performance manager
+                const manager = PerformanceManager.getInstance();
+                setResScale(Math.round(manager.getResolutionScale() * 100));
             }
 
             setFrames(prev => prev + 1);
@@ -29,6 +35,13 @@ export const FpsCounter = () => {
         };
     }, [frames, lastTime]);
 
+    // Color coding based on performance
+    const getFpsColor = () => {
+        if (fps >= 55) return '#4CAF50'; // Green for good FPS
+        if (fps >= 30) return '#FF9800'; // Orange for acceptable FPS
+        return '#F44336'; // Red for poor FPS
+    };
+
     return (
         <div style={{
             position: 'absolute',
@@ -41,9 +54,19 @@ export const FpsCounter = () => {
             color: '#0fbef2',
             fontFamily: 'monospace',
             fontSize: '14px',
-            textAlign: 'center'
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '5px'
         }}>
-            FPS: {fps}
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+                <span>FPS:</span>
+                <span style={{ color: getFpsColor() }}>{fps}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+                <span>RES:</span>
+                <span>{resScale}%</span>
+            </div>
         </div>
     );
 }; 
