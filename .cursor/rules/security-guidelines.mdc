@@ -1,0 +1,7 @@
+# Security Guidelines
+
+- Validate all user input
+- Implement proper authentication
+- Use HTTPS for all communications
+- Sanitize WebSocket messages
+- Follow OWASP security guidelines 

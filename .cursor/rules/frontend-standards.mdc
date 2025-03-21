@@ -1,0 +1,7 @@
+# Frontend Development Standards
+
+- Use ES6+ features
+- Implement responsive design patterns
+- Follow Three.js best practices for performance
+- Use TypeScript interfaces for type safety
+- Implement proper error handling for WebSocket connections 

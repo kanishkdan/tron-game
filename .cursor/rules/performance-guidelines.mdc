@@ -1,0 +1,7 @@
+# Performance Guidelines
+
+- Optimize 3D models for web performance
+- Implement proper asset loading and caching
+- Use WebGL optimizations where possible
+- Monitor and optimize network traffic
+- Implement proper garbage collection 

@@ -1,0 +1,14 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rules Location
+
+All Cursor rules must be:
+- Located in the `.cursor/rules` directory
+- Named with the `.mdc` extension
+- Follow kebab-case naming convention
+- Each rule should be in its own file
+- Rules should be clear and concise
+- Rules should be categorized by their purpose (e.g., performance, security, coding-standards) 

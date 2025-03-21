@@ -1,14 +1,15 @@
-# Girgaya - Multiplayer Obstacle Course Game
+# Tron-Game - Multiplayer Light Cycle Game
 
-A browser-based multiplayer obstacle course elimination game inspired by Fall Guys. Built with Three.js, FastAPI, and WebSocket technology.
+A browser-based multiplayer light cycle game inspired by Tron. Built with Three.js, Cannon.js, FastAPI, and WebSocket technology.
 
 ## Features
 
-- 3D physics-based obstacle courses
-- Real-time multiplayer gameplay
-- Multiple mini-games and elimination rounds
+- 3D physics-based light cycle gameplay
+- Real-time multiplayer grid racing
+- Light trail generation and collision system
 - Cross-platform support (mobile and desktop)
 - Responsive controls and UI
+- Tron-inspired visual effects
 
 ## Tech Stack
 
@@ -37,8 +38,8 @@ A browser-based multiplayer obstacle course elimination game inspired by Fall Gu
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/girgaya.git
-cd girgaya
+git clone https://github.com/yourusername/tron-game.git
+cd tron-game
 ```
 
 2. Install frontend dependencies:
@@ -80,7 +81,7 @@ npm run dev
 ## Project Structure
 
 ```
-girgaya/
+tron-game/
 ├── frontend/           # Three.js + Vite frontend
 │   ├── src/
 │   │   ├── game/      # Game logic and components
@@ -112,4 +113,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Three.js community for 3D rendering
 - FastAPI team for the excellent web framework
-- Fall Guys for inspiration 
+- Tron franchise for inspiration 

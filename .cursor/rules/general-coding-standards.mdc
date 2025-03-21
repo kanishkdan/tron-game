@@ -1,0 +1,12 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# General Coding Standards
+
+- Use TypeScript for frontend development
+- Follow PEP 8 for Python backend code
+- Use meaningful variable and function names
+- Add JSDoc/TypeDoc comments for complex functions
+- Keep functions focused and single-purpose 
