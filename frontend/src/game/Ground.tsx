@@ -17,7 +17,7 @@ export const Ground = () => {
   useEffect(() => {
     if (texture) {
       texture.wrapS = texture.wrapT = RepeatWrapping;
-      texture.repeat.set(50, 50);
+      texture.repeat.set(30, 30);
       texture.magFilter = LinearFilter;
       texture.minFilter = LinearFilter;
       texture.needsUpdate = true;

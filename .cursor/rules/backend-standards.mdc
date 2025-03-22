@@ -1,6 +1,7 @@
----
-description: 
-globs: 
-alwaysApply: false
----
- 
+# Backend Development Standards
+
+- Use FastAPI dependency injection
+- Implement proper WebSocket error handling
+- Use Pydantic models for data validation
+- Follow RESTful API design principles
+- Implement proper logging and monitoring 

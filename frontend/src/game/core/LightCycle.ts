@@ -17,12 +17,12 @@ export class LightCycle {
     private modelContainer!: THREE.Group; // New container to adjust model position
     private body: CANNON.Body;
     private readonly SIZE_MULTIPLIER = 4; // Standardized multiplier across all components
-    private readonly MAX_SPEED = 20 * this.SIZE_MULTIPLIER;
-    private readonly MIN_SPEED = 10 * this.SIZE_MULTIPLIER;
+    private readonly MAX_SPEED = 15 * this.SIZE_MULTIPLIER;
+    private readonly MIN_SPEED = 5 * this.SIZE_MULTIPLIER;
     private readonly ACCELERATION = 15 * this.SIZE_MULTIPLIER;
     private readonly DECELERATION = 10 * this.SIZE_MULTIPLIER;
     private readonly TURN_SPEED = 2.0;
-    private readonly BANK_ANGLE = 0.3;
+    private readonly BANK_ANGLE = 0.5;
     private readonly GRID_SIZE = 4 * this.SIZE_MULTIPLIER;
     private readonly ARENA_SIZE = 500 * this.SIZE_MULTIPLIER;
     private currentSpeed = this.MIN_SPEED;
@@ -36,7 +36,7 @@ export class LightCycle {
     private trailLine: THREE.Mesh | null = null;
     private trailGeometry: THREE.BufferGeometry | null = null;
     private trailMaterial: THREE.MeshBasicMaterial | null = null;
-    private readonly MAX_TRAIL_LENGTH = 250;
+    private readonly MAX_TRAIL_LENGTH = 200;
     private scene: THREE.Scene;
     private rearLight: THREE.PointLight;
     private initialScale = new THREE.Vector3(3.0, 2.5, 2.5);
@@ -158,6 +158,32 @@ export class LightCycle {
                     break;
             }
         });
+
+        // Add event listener for mobile controls
+        window.addEventListener('gameControl', ((event: CustomEvent<{ action: 'left' | 'right' | 'jump', type: 'press' | 'release' }>) => {
+            const { action, type } = event.detail;
+            
+            if (type === 'press') {
+                switch (action) {
+                    case 'left':
+                        this.move('left');
+                        break;
+                    case 'right':
+                        this.move('right');
+                        break;
+                    case 'jump':
+                        this.jump();
+                        break;
+                }
+            } else if (type === 'release') {
+                switch (action) {
+                    case 'left':
+                    case 'right':
+                        this.move(null);
+                        break;
+                }
+            }
+        }) as EventListener);
     }
 
     update(deltaTime: number) {
