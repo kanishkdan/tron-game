@@ -12,4 +12,9 @@ export default defineConfig({
   optimizeDeps: {
     include: ['@react-three/cannon', '@react-three/drei', '@react-three/fiber', 'three'],
   },
+  server: {
+    host: '0.0.0.0',
+    port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
+    strictPort: true,
+  }
 })
