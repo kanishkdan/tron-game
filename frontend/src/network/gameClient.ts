@@ -36,16 +36,18 @@ export class GameClient {
   private serverUrl: string;
 
   constructor(serverUrl?: string) {
-    // Automatically determine WebSocket URL based on current host
-    if (!serverUrl) {
+    // Use provided server URL, environment variable, or fallback to local development
+    if (serverUrl) {
+      this.serverUrl = serverUrl;
+    } else if (import.meta.env.VITE_WS_URL) {
+      this.serverUrl = import.meta.env.VITE_WS_URL;
+    } else {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname;
       const port = '8000'; // Backend port
       this.serverUrl = `${protocol}//${host}:${port}`;
-      console.log(`Using WebSocket server URL: ${this.serverUrl}`);
-    } else {
-      this.serverUrl = serverUrl;
     }
+    console.log(`Using WebSocket server URL: ${this.serverUrl}`);
   }
 
   connect(playerName: string): Promise<void> {
