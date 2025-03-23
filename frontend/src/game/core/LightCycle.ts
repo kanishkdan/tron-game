@@ -16,9 +16,9 @@ export class LightCycle {
     private mesh!: THREE.Group;
     private modelContainer!: THREE.Group; // New container to adjust model position
     private body: CANNON.Body;
-    private readonly SIZE_MULTIPLIER = 4; // Standardized multiplier across all components
-    private readonly MAX_SPEED = 15 * this.SIZE_MULTIPLIER;
-    private readonly MIN_SPEED = 5 * this.SIZE_MULTIPLIER;
+    private readonly SIZE_MULTIPLIER = 5; // Standardized multiplier across all components
+    private readonly MAX_SPEED = 25 * this.SIZE_MULTIPLIER;
+    private readonly MIN_SPEED = 1 * this.SIZE_MULTIPLIER;
     private readonly ACCELERATION = 15 * this.SIZE_MULTIPLIER;
     private readonly DECELERATION = 10 * this.SIZE_MULTIPLIER;
     private readonly TURN_SPEED = 2.0;
@@ -63,8 +63,29 @@ export class LightCycle {
     private bikeColor: TronColor;
     private readonly GROUND_HEIGHT = 0.05;
     private readonly PHYSICS_HEIGHT = 0.25; // New constant for physics body height
+    
+    // New properties for trail activation cooldown
+    private readonly TRAIL_ACTIVATION_DELAY = 5000; // 5 seconds in milliseconds
+    private creationTime: number = 0;
+    private trailsActive: boolean = false;
+    private trailActivationCallback?: (secondsRemaining: number) => void;
+    // LOD for trail segments to improve performance
+    private trailUpdateCounter: number = 0;
+    private readonly TRAIL_UPDATE_INTERVAL = 2; // Only update every X frames
 
-    constructor(scene: THREE.Scene, world: CANNON.World, onCollision?: () => void) {
+    constructor(
+        scene: THREE.Scene, 
+        initialPosition: THREE.Vector3,
+        physicsWorld: CANNON.World,
+        onCollision?: () => void,
+        trailActivationCallback?: (secondsRemaining: number) => void
+    ) {
+        // Store the callback for trail activation countdown
+        this.trailActivationCallback = trailActivationCallback;
+        
+        // Record creation time for trail activation delay
+        this.creationTime = performance.now();
+        
         this.scene = scene;
         this.onCollision = onCollision;
         
@@ -96,7 +117,7 @@ export class LightCycle {
         // Ensure initial velocity is set correctly
         this.currentSpeed = this.MIN_SPEED;
         this.body.velocity.set(0, 0, -this.MIN_SPEED);
-        world.addBody(this.body);
+        physicsWorld.addBody(this.body);
 
         // Create ground contact material with adjusted properties
         const groundMaterial = new CANNON.Material();
@@ -110,7 +131,7 @@ export class LightCycle {
                 contactEquationRelaxation: 3
             }
         );
-        world.addContactMaterial(contactMaterial);
+        physicsWorld.addContactMaterial(contactMaterial);
 
         // Initialize rotation to face forward
         this.targetRotation = 0;
@@ -199,8 +220,13 @@ export class LightCycle {
         // Then update visual elements
         this.updateVisuals();
         
-        // Finally update trail
-        this.updateTrail();
+        // Check if trails should be activated
+        this.checkTrailActivation(currentTime);
+        
+        // Update trail only if active - ALWAYS update every frame
+        if (this.trailsActive) {
+            this.updateTrail();
+        }
     }
 
     private updatePhysics(deltaTime: number) {
@@ -380,23 +406,24 @@ export class LightCycle {
     }
 
     private updateTrail() {
-        if (!this.modelContainer || !this.trailGeometry || !this.trailLine) return;
+        if (!this.modelContainer || !this.trailGeometry || !this.trailLine || !this.trailsActive) return;
 
         const currentPos = this.modelContainer.position;
         
-        // Add new trail point only if we've moved enough
+        // Always add trail points during any movement to ensure visibility
+        // Add new trail point if we've moved at all or enough time has passed
         if (!this.lastTrailPoint || 
             new THREE.Vector3(currentPos.x, 0, currentPos.z)
                 .distanceTo(new THREE.Vector3(
                     this.lastTrailPoint.x, 
                     0, 
                     this.lastTrailPoint.z
-                )) > 0.5) {
+                )) > 0.3) { // More frequent trail point addition
             
             // Create the new point at the bike's current height
             const newPoint = new THREE.Vector3(
                 currentPos.x, 
-                currentPos.y,  // Use actual bike height
+                currentPos.y, // Use actual bike height
                 currentPos.z
             );
             
@@ -407,14 +434,14 @@ export class LightCycle {
                 // Get direction from last point to current point
                 direction.subVectors(newPoint, this.lastTrailPoint!).normalize();
             
-            // Calculate perpendicular vector for width
-            const perpendicular = new THREE.Vector3(-direction.z, 0, direction.x).normalize();
-            
+                // Calculate perpendicular vector for width
+                const perpendicular = new THREE.Vector3(-direction.z, 0, direction.x).normalize();
+                
                 // Add new point
                 this.trailPoints.push(newPoint);
                 this.lastTrailPoint = newPoint.clone();
                 
-                // Limit trail length
+                // Limit trail length - remove just one point at a time for smoother trails
                 if (this.trailPoints.length > this.MAX_TRAIL_LENGTH) {
                     this.trailPoints.shift();
                 }
@@ -443,10 +470,10 @@ export class LightCycle {
                     segmentPerpendicular = new THREE.Vector3(-segmentDirection.z, 0, segmentDirection.x).normalize();
                     
                     // Calculate the bottom height for this segment
-                    const bottomHeight = Math.max(0, point.y - this.BASE_TRAIL_HEIGHT);
-                    const topHeight = point.y + this.BASE_TRAIL_HEIGHT;
+                    const bottomHeight = Math.max(0, point.y - 0.1); // Very small offset from ground
+                    const topHeight = point.y + this.BASE_TRAIL_HEIGHT; // Restore original tall trail height
                     
-                    // Create the 4 corners of the ribbon segment with consistent height difference
+                    // Create the 4 corners of the ribbon segment
                     // Top left
                     positions[i * 12] = point.x + segmentPerpendicular.x * this.TRAIL_WIDTH;
                     positions[i * 12 + 1] = topHeight;
@@ -459,12 +486,12 @@ export class LightCycle {
                     
                     // Bottom left
                     positions[i * 12 + 6] = point.x + segmentPerpendicular.x * this.TRAIL_WIDTH;
-                    positions[i * 12 + 7] = bottomHeight; // Use calculated bottom height
+                    positions[i * 12 + 7] = bottomHeight;
                     positions[i * 12 + 8] = point.z + segmentPerpendicular.z * this.TRAIL_WIDTH;
                     
                     // Bottom right
                     positions[i * 12 + 9] = point.x - segmentPerpendicular.x * this.TRAIL_WIDTH;
-                    positions[i * 12 + 10] = bottomHeight; // Use calculated bottom height
+                    positions[i * 12 + 10] = bottomHeight;
                     positions[i * 12 + 11] = point.z - segmentPerpendicular.z * this.TRAIL_WIDTH;
                     
                     // Create faces (triangles) - only if we have a next point
@@ -527,7 +554,8 @@ export class LightCycle {
     }
 
     getLightTrail(): THREE.Object3D[] {
-        return this.trailLine ? [this.trailLine] : [];
+        // Only return trail if it's active
+        return (this.trailLine && this.trailsActive) ? [this.trailLine] : [];
     }
 
     getTurnDirection(): number {
@@ -591,7 +619,8 @@ export class LightCycle {
             color: this.bikeColor.hex,
             transparent: true,
             opacity: 0.9,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
+            depthWrite: true // Enable depth writing for proper visual appearance
         });
 
         // Initialize with empty positions
@@ -601,7 +630,7 @@ export class LightCycle {
         // Create mesh
         this.trailLine = new THREE.Mesh(this.trailGeometry, this.trailMaterial);
         this.trailLine.renderOrder = 1;
-        this.trailLine.frustumCulled = false;
+        this.trailLine.frustumCulled = false; // Disable frustum culling to ensure trail is always visible
         this.scene.add(this.trailLine);
 
         // Create trail light with increased intensity and bike color
@@ -703,7 +732,7 @@ export class LightCycle {
                 // Add model to container instead of directly to scene
                 this.modelContainer.add(this.mesh);
                 
-                // Initialize trail
+                // Don't initialize trail right away, wait for activation time
                 this.lastTrailPoint = new THREE.Vector3(
                     this.mesh.position.x,
                     this.BASE_TRAIL_HEIGHT,
@@ -716,5 +745,36 @@ export class LightCycle {
     // Add getter for bike color (for minimap)
     getBikeColor(): number {
         return this.bikeColor.hex;
+    }
+
+    /**
+     * Check if light trails should be activated based on time since creation
+     */
+    private checkTrailActivation(currentTime: number) {
+        if (!this.trailsActive) {
+            const elapsedTime = currentTime - this.creationTime;
+            const timeRemaining = Math.max(0, this.TRAIL_ACTIVATION_DELAY - elapsedTime);
+            
+            // Notify about countdown if callback is provided
+            if (this.trailActivationCallback && timeRemaining > 0) {
+                const secondsRemaining = Math.ceil(timeRemaining / 1000);
+                this.trailActivationCallback(secondsRemaining);
+            }
+            
+            // Activate trails after delay
+            if (elapsedTime >= this.TRAIL_ACTIVATION_DELAY) {
+                this.trailsActive = true;
+                
+                // Initialize light trail only when needed
+                if (!this.trailLine) {
+                    this.initLightTrail();
+                }
+                
+                // Final callback with 0 seconds remaining
+                if (this.trailActivationCallback) {
+                    this.trailActivationCallback(0);
+                }
+            }
+        }
     }
 } 

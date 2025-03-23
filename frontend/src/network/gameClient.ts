@@ -33,8 +33,20 @@ export class GameClient {
   private maxReconnectAttempts = 5;
   private reconnectTimeout: number = 1000; // Start with 1 second
   private sessionStorageKey = 'tron_game_player_session';
+  private serverUrl: string;
 
-  constructor(private serverUrl: string = 'ws://localhost:8000') {}
+  constructor(serverUrl?: string) {
+    // Automatically determine WebSocket URL based on current host
+    if (!serverUrl) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.hostname;
+      const port = '8000'; // Backend port
+      this.serverUrl = `${protocol}//${host}:${port}`;
+      console.log(`Using WebSocket server URL: ${this.serverUrl}`);
+    } else {
+      this.serverUrl = serverUrl;
+    }
+  }
 
   connect(playerName: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -98,10 +110,13 @@ export class GameClient {
       console.log(`Attempting to reconnect (${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})...`);
       setTimeout(() => {
         this.reconnectAttempts++;
-        this.connect(this.playerId!.split('-')[0]).catch(() => {
-          // Exponential backoff
-          this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, 10000);
-        });
+        const playerName = this.playerId?.split('-')[0];
+        if (playerName) {
+          this.connect(playerName).catch(() => {
+            // Exponential backoff
+            this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, 10000);
+          });
+        }
       }, this.reconnectTimeout);
     }
   }

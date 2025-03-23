@@ -21,7 +21,7 @@ const MenuContainer = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.4);
   z-index: 1000;
   font-family: 'Orbitron', sans-serif;
   overflow: hidden;
@@ -65,7 +65,7 @@ const MenuContent = styled.div`
   border-radius: 5px;
   text-align: center;
   position: relative;
-  animation: ${pulseGlow} 2s infinite;
+  animation: ${pulseGlow} 5s infinite;
   max-width: 400px;
   width: 90%;
   z-index: 1;
@@ -77,7 +77,6 @@ const MenuContent = styled.div`
     left: -2px;
     right: -2px;
     bottom: -2px;
-    background: linear-gradient(45deg, #0fbef2, transparent);
     z-index: -1;
     border-radius: 7px;
   }

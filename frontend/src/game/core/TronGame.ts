@@ -4,6 +4,12 @@ import { Arena } from './Arena';
 import { LightCycle } from './LightCycle';
 import { PerformanceManager } from './PerformanceManager';
 
+// Event for trail activation countdown
+export type TrailActivationEvent = {
+    playerId: string;
+    secondsRemaining: number;
+};
+
 export class TronGame {
     private scene: THREE.Scene;
     private world: CANNON.World;
@@ -13,12 +19,18 @@ export class TronGame {
     private lastUpdateTime: number = 0;
     private isGameOver: boolean = false;
     private currentPlayer: LightCycle | null = null;
-    private readonly SIZE_MULTIPLIER = 4; // Match the multiplier from LightCycle.ts
+    private readonly SIZE_MULTIPLIER = 5; // Match the multiplier from LightCycle.ts
     private readonly ARENA_SIZE = 500 * this.SIZE_MULTIPLIER;
+    private onTrailActivationUpdate?: (event: TrailActivationEvent) => void;
 
-    constructor(scene: THREE.Scene, world: CANNON.World) {
+    constructor(
+        scene: THREE.Scene, 
+        world: CANNON.World,
+        onTrailActivationUpdate?: (event: TrailActivationEvent) => void
+    ) {
         this.scene = scene;
         this.world = world;
+        this.onTrailActivationUpdate = onTrailActivationUpdate;
 
         // Initialize performance manager
         PerformanceManager.getInstance();
@@ -32,16 +44,58 @@ export class TronGame {
     }
 
     start(playerName: string) {
-        // Create player's light cycle
-        const playerCycle = new LightCycle(this.scene, this.world, () => {
-            this.handleCollision(playerCycle);
-        });
+        // Calculate initial position for player
+        const startPosition = new THREE.Vector3(0, 1, 0);
+        
+        // Create player's light cycle with trail activation callback
+        const playerCycle = new LightCycle(
+            this.scene,
+            startPosition,
+            this.world,
+            () => this.handleCollision(playerCycle),
+            (secondsRemaining) => {
+                if (this.onTrailActivationUpdate) {
+                    this.onTrailActivationUpdate({
+                        playerId: playerName,
+                        secondsRemaining
+                    });
+                }
+            }
+        );
+        
         this.players.set(playerName, playerCycle);
         this.currentPlayer = playerCycle;
 
         // Start game loop
         this.lastUpdateTime = performance.now();
         this.update();
+    }
+
+    // Add a method to add remote players with delayed trail activation
+    addRemotePlayer(playerId: string, position?: THREE.Vector3): LightCycle {
+        const startPos = position || new THREE.Vector3(
+            Math.random() * this.ARENA_SIZE/2 - this.ARENA_SIZE/4,
+            1,
+            Math.random() * this.ARENA_SIZE/2 - this.ARENA_SIZE/4
+        );
+        
+        const remoteCycle = new LightCycle(
+            this.scene,
+            startPos,
+            this.world,
+            () => this.handleCollision(remoteCycle),
+            (secondsRemaining) => {
+                if (this.onTrailActivationUpdate) {
+                    this.onTrailActivationUpdate({
+                        playerId,
+                        secondsRemaining
+                    });
+                }
+            }
+        );
+        
+        this.players.set(playerId, remoteCycle);
+        return remoteCycle;
     }
 
     getPlayer(): LightCycle | null {
@@ -62,8 +116,10 @@ export class TronGame {
         // Update performance manager
         PerformanceManager.getInstance().update();
 
-        // Update physics world
-        this.world.step(1/60, deltaTime, 3);
+        // Update physics world with fixed timestep for stability
+        const fixedTimeStep = 1/60;
+        const maxSubSteps = 3;
+        this.world.step(fixedTimeStep, deltaTime, maxSubSteps);
 
         // Update all players
         for (const [name, cycle] of this.players) {

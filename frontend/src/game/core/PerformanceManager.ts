@@ -11,14 +11,18 @@ export class PerformanceManager {
     private currentFps = 60;
     private targetFps = 60;
     private resolutionScale = 1.0;
-    private readonly MIN_RESOLUTION_SCALE = 0.5;
+    private readonly MIN_RESOLUTION_SCALE = 0.3;
     private fpsHistory: number[] = [];
     private readonly FPS_HISTORY_SIZE = 20; // Increase history size for more stability
     private isEnabled = true;
     private lastResolutionChangeTime = 0;
     private readonly MIN_CHANGE_INTERVAL = 2000; // Minimum 2 seconds between resolution changes
+    private readonly TARGET_MIN_FPS = 45; // Never go below this FPS
 
     private constructor() {
+        // Initialize resolution based on device size
+        this.initializeResolutionScale();
+        
         // Initialize FPS history with target values
         for (let i = 0; i < this.FPS_HISTORY_SIZE; i++) {
             this.fpsHistory.push(this.targetFps);
@@ -34,6 +38,20 @@ export class PerformanceManager {
 
         // Listen for window resize events to reapply resolution
         window.addEventListener('resize', () => this.applyResolutionScale());
+    }
+    
+    /**
+     * Initialize resolution scale based on device capabilities
+     */
+    private initializeResolutionScale(): void {
+        // Check if we're on a mobile/low-tier device
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const isLowEndDevice = isMobile || window.innerWidth < 768;
+        
+        // Start at 75% for big devices, 30% for small/mid/low tier
+        this.resolutionScale = isLowEndDevice ? 0.3 : 0.75;
+        
+        console.log(`Initializing resolution scale at ${(this.resolutionScale * 100).toFixed(0)}% based on device type`);
     }
 
     public static getInstance(): PerformanceManager {
@@ -74,36 +92,29 @@ export class PerformanceManager {
             const recentFps = this.fpsHistory.slice(-10);
             const avgFps = recentFps.reduce((sum, fps) => sum + fps, 0) / recentFps.length;
             
-            // Only reduce resolution if FPS drops below 30
-            const LOW_FPS_THRESHOLD = 30;
-            const HIGH_FPS_THRESHOLD = 55;
-            
-            // More gradual scaling adjustments
-            if (avgFps < LOW_FPS_THRESHOLD) {
+            // If FPS is below target minimum, reduce resolution to improve performance
+            if (avgFps < this.TARGET_MIN_FPS) {
                 // Reduce resolution more aggressively when FPS is very low
-                const reduction = avgFps < 20 ? 0.85 : 0.95;
+                const reduction = avgFps < 30 ? 0.9 : 0.95;
                 const newScale = Math.max(this.resolutionScale * reduction, this.MIN_RESOLUTION_SCALE);
                 
-                // Only apply if the change is significant (>2%)
-                if (Math.abs(newScale - this.resolutionScale) > 0.02) {
+                // Only apply if the change is significant (>1%)
+                if (Math.abs(newScale - this.resolutionScale) > 0.01) {
                     this.resolutionScale = newScale;
                     this.applyResolutionScale();
                     this.lastResolutionChangeTime = now;
                     console.log(`FPS: ${avgFps.toFixed(1)} - Reducing resolution to ${(this.resolutionScale * 100).toFixed(0)}%`);
                 }
             } 
-            // Only increase resolution if we have significant headroom and resolution is below 100%
-            else if (avgFps > HIGH_FPS_THRESHOLD && this.resolutionScale < 1.0) {
-                // Very gradual increase (only 2% at a time)
-                const newScale = Math.min(this.resolutionScale * 1.02, 1.0);
+            // If FPS is above target and we have headroom, gradually increase resolution
+            else if (avgFps > this.TARGET_MIN_FPS && this.resolutionScale < 1.0) {
+                // Increase by 5% at a time as long as we maintain good FPS
+                const newScale = Math.min(this.resolutionScale + 0.05, 1.0);
                 
-                // Only apply if the change is measurable
-                if (newScale - this.resolutionScale > 0.01) {
-                    this.resolutionScale = newScale;
-                    this.applyResolutionScale();
-                    this.lastResolutionChangeTime = now;
-                    console.log(`FPS: ${avgFps.toFixed(1)} - Increasing resolution to ${(this.resolutionScale * 100).toFixed(0)}%`);
-                }
+                this.resolutionScale = newScale;
+                this.applyResolutionScale();
+                this.lastResolutionChangeTime = now;
+                console.log(`FPS: ${avgFps.toFixed(1)} - Increasing resolution to ${(this.resolutionScale * 100).toFixed(0)}%`);
             }
         }
     }

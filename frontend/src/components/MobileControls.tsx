@@ -19,11 +19,11 @@ const JumpButtonContainer = styled.div`
   pointer-events: none;
 `;
 
-const ControlButton = styled.button<{ isActive?: boolean }>`
+const ControlButton = styled.button<{ $isActive?: boolean }>`
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: ${props => props.isActive ? 'rgba(15, 190, 242, 0.3)' : 'rgba(15, 190, 242, 0.1)'};
+  background: ${props => props.$isActive ? 'rgba(15, 190, 242, 0.3)' : 'rgba(15, 190, 242, 0.1)'};
   border: 2px solid #0fbef2;
   color: #0fbef2;
   font-size: 24px;
@@ -46,7 +46,7 @@ const ControlButton = styled.button<{ isActive?: boolean }>`
 `;
 
 const JumpButton = styled(ControlButton)`
-  background: ${props => props.isActive ? 'rgba(255, 0, 68, 0.3)' : 'rgba(255, 0, 68, 0.1)'};
+  background: ${props => props.$isActive ? 'rgba(255, 0, 68, 0.3)' : 'rgba(255, 0, 68, 0.1)'};
   border-color: #ff0044;
   color: #ff0044;
   box-shadow: 0 0 10px rgba(255, 0, 68, 0.2);
@@ -103,28 +103,34 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   // Handle touch events for better mobile support
   useEffect(() => {
     const handleTouchStart = (e: TouchEvent) => {
-      e.preventDefault();
       const touch = e.touches[0];
       const target = document.elementFromPoint(touch.clientX, touch.clientY);
       
       if (target?.closest('[data-control="left"]')) {
+        e.preventDefault();
         handleLeftPress();
       } else if (target?.closest('[data-control="right"]')) {
+        e.preventDefault();
         handleRightPress();
       } else if (target?.closest('[data-control="jump"]')) {
+        e.preventDefault();
         handleJumpPress();
       }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      e.preventDefault();
       const touch = e.changedTouches[0];
       const target = document.elementFromPoint(touch.clientX, touch.clientY);
       
       if (target?.closest('[data-control="left"]')) {
+        e.preventDefault();
         handleLeftRelease();
       } else if (target?.closest('[data-control="right"]')) {
+        e.preventDefault();
         handleRightRelease();
+      } else if (target?.closest('[data-control="jump"]')) {
+        e.preventDefault();
+        setIsJumpPressed(false);
       }
     };
 
@@ -142,7 +148,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
       <ControlsContainer>
         <ControlButton
           data-control="left"
-          isActive={isLeftPressed}
+          $isActive={isLeftPressed}
           onMouseDown={handleLeftPress}
           onMouseUp={handleLeftRelease}
           onMouseLeave={handleLeftRelease}
@@ -151,7 +157,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
         </ControlButton>
         <ControlButton
           data-control="right"
-          isActive={isRightPressed}
+          $isActive={isRightPressed}
           onMouseDown={handleRightPress}
           onMouseUp={handleRightRelease}
           onMouseLeave={handleRightRelease}
@@ -162,7 +168,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
       <JumpButtonContainer>
         <JumpButton
           data-control="jump"
-          isActive={isJumpPressed}
+          $isActive={isJumpPressed}
           onMouseDown={handleJumpPress}
           onMouseUp={() => setIsJumpPressed(false)}
           onMouseLeave={() => setIsJumpPressed(false)}

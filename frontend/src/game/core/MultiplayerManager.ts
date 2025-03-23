@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { LightCycle } from './LightCycle';
 import { Player } from '../../network/gameClient';
+import { TronGame, TrailActivationEvent } from './TronGame';
 
 // Constants for performance optimization
 const UPDATE_FREQUENCY = 0.03; // Only update visuals at 30Hz
@@ -23,10 +24,19 @@ export class MultiplayerManager {
     private enemyPositions: Map<string, {x: number, z: number}> = new Map();
     // For debugging
     private lastPerformanceLog: number = 0;
+    // Optional callback for trail activation events
+    private onTrailActivationUpdate?: (event: TrailActivationEvent) => void;
+    // Game instance reference
+    private game?: TronGame;
 
-    constructor(scene: THREE.Scene, world: CANNON.World) {
+    constructor(
+        scene: THREE.Scene, 
+        world: CANNON.World,
+        onTrailActivationUpdate?: (event: TrailActivationEvent) => void
+    ) {
         this.scene = scene;
         this.world = world;
+        this.onTrailActivationUpdate = onTrailActivationUpdate;
     }
 
     setLocalPlayerId(playerId: string) {
@@ -35,6 +45,10 @@ export class MultiplayerManager {
 
     setLocalPlayerPosition(position: THREE.Vector3) {
         this.localPlayerPosition.copy(position);
+    }
+    
+    setGameInstance(game: TronGame) {
+        this.game = game;
     }
 
     addPlayer(playerId: string, position?: { x: number; y: number; z: number }) {
@@ -50,28 +64,56 @@ export class MultiplayerManager {
         this.removePlayer(playerId);
 
         try {
-            // If we have too many remote players already, use a simplified representation
-            const shouldUseSimplifiedPhysics = this.remotePlayers.size >= MAX_PLAYERS_WITH_PHYSICS;
+            let cycle: LightCycle;
             
-            // Create a remote player's light cycle with a dummy collision handler
-            const cycle = new LightCycle(this.scene, this.world, () => {
-                console.log(`Remote player ${playerId} collision`);
-            });
+            // Convert position to THREE.Vector3 if provided
+            let pos: THREE.Vector3 | undefined;
+            if (position) {
+                pos = new THREE.Vector3(
+                    position.x || 0, 
+                    position.y || 0.5, 
+                    position.z || 0
+                );
+            }
             
-            // If using simplified physics, modify the cycle's behavior
-            if (shouldUseSimplifiedPhysics) {
-                // Make it not affect other objects' physics
-                const body = (cycle as any).body;
-                if (body) {
-                    body.type = CANNON.Body.KINEMATIC;
-                    body.collisionResponse = false;
+            // Use the game instance to create players if available (preferred approach)
+            if (this.game) {
+                cycle = this.game.addRemotePlayer(playerId, pos);
+            } else {
+                // Fallback to direct creation if game isn't available
+                // This is a simplified version for backward compatibility
+                const initialPos = pos || new THREE.Vector3(0, 0.5, 0);
+                cycle = new LightCycle(
+                    this.scene,
+                    initialPos,
+                    this.world,
+                    () => {
+                        console.log(`Remote player ${playerId} collision`);
+                    },
+                    (secondsRemaining) => {
+                        if (this.onTrailActivationUpdate) {
+                            this.onTrailActivationUpdate({
+                                playerId,
+                                secondsRemaining
+                            });
+                        }
+                    }
+                );
+                
+                // If we have too many remote players already, use simplified physics
+                if (this.remotePlayers.size >= MAX_PLAYERS_WITH_PHYSICS) {
+                    const body = cycle.getBody();
+                    if (body) {
+                        body.type = CANNON.Body.KINEMATIC;
+                        body.collisionResponse = false;
+                    }
                 }
             }
             
             // Store the player
             this.remotePlayers.set(playerId, cycle);
             
-            // Set initial position if provided
+            // Set initial position for tracking
             if (position) {
                 console.log(`Setting initial position for ${playerId}:`, position);
                 this.remotePositions.set(playerId, new THREE.Vector3(

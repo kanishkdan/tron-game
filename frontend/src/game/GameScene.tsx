@@ -3,7 +3,7 @@ import { Physics } from '@react-three/cannon';
 import { PerspectiveCamera, KeyboardControls } from '@react-three/drei';
 import { Suspense, useRef, useState, useEffect } from 'react';
 import StartMenu from './StartMenu';
-import { TronGame } from './core/TronGame';
+import { TronGame, TrailActivationEvent } from './core/TronGame';
 import { CameraController } from './core/CameraController';
 import { Minimap } from '../components/Minimap';
 import { Ground } from './Ground';
@@ -11,6 +11,8 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { GameClient } from '../network/gameClient';
 import { MultiplayerManager } from './core/MultiplayerManager';
+import { TrailActivationDisplay } from '../components/TrailActivationDisplay';
+import { PerformanceDisplay } from '../components/PerformanceDisplay';
 
 // Lighting component to handle all scene lighting
 const SceneLighting = () => {
@@ -52,12 +54,14 @@ const GameRenderer = ({
     game, 
     onPositionUpdate, 
     gameClient,
-    onEnemyPositionsUpdate
+    onEnemyPositionsUpdate,
+    onTrailActivationUpdate
 }: { 
     game: TronGame; 
     onPositionUpdate: (pos: { x: number; y: number; z: number }, trailPoints: { x: number; z: number }[]) => void;
     gameClient: GameClient;
     onEnemyPositionsUpdate: (enemies: {id: string, position: {x: number, z: number}}[]) => void;
+    onTrailActivationUpdate: (event: TrailActivationEvent) => void;
 }) => {
     const { camera, gl, scene } = useThree();
     const cameraController = useRef<CameraController>();
@@ -75,8 +79,17 @@ const GameRenderer = ({
         world.current = new CANNON.World();
         world.current.gravity.set(0, -19.81, 0);
         
-        // Initialize multiplayer manager
-        multiplayerManager.current = new MultiplayerManager(scene, world.current);
+        // Initialize multiplayer manager with trail activation callback
+        multiplayerManager.current = new MultiplayerManager(
+            scene, 
+            world.current,
+            onTrailActivationUpdate
+        );
+        
+        // Connect multiplayer manager with game instance
+        if (game) {
+            multiplayerManager.current.setGameInstance(game);
+        }
         
         // Set local player ID
         multiplayerManager.current.setLocalPlayerId(gameClient.getPlayerId() || '');
@@ -115,7 +128,7 @@ const GameRenderer = ({
             window.gameRenderer = undefined;
             multiplayerManager.current?.clear();
         };
-    }, [gl, scene, gameClient]);
+    }, [gl, scene, gameClient, game, onTrailActivationUpdate]);
 
     useEffect(() => {
         if (game.getPlayer()) {
@@ -187,9 +200,29 @@ export const GameScene = () => {
     const [trailPoints, setTrailPoints] = useState<{ x: number; z: number }[]>([]);
     const [enemyPositions, setEnemyPositions] = useState<{id: string, position: {x: number, z: number}}[]>([]);
     const [arenaSize, setArenaSize] = useState(500);
+    const [trailActivationEvents, setTrailActivationEvents] = useState<Map<string, number>>(new Map());
     const scene = useRef<THREE.Scene>();
     const game = useRef<TronGame>();
     const gameClient = useRef<GameClient>();
+
+    // Handle trail activation events
+    const handleTrailActivation = (event: TrailActivationEvent) => {
+        setTrailActivationEvents(prev => {
+            const newMap = new Map(prev);
+            newMap.set(event.playerId, event.secondsRemaining);
+            // Remove completed activations after a short delay
+            if (event.secondsRemaining === 0) {
+                setTimeout(() => {
+                    setTrailActivationEvents(current => {
+                        const updatedMap = new Map(current);
+                        updatedMap.delete(event.playerId);
+                        return updatedMap;
+                    });
+                }, 1000);
+            }
+            return newMap;
+        });
+    };
 
     const handleGameStart = async (name: string) => {
         try {
@@ -205,7 +238,14 @@ export const GameScene = () => {
                 physicsWorld.gravity.set(0, -19.81, 0);
                 physicsWorld.defaultContactMaterial.friction = 0.1;
                 physicsWorld.defaultContactMaterial.restitution = 0.2;
-                game.current = new TronGame(scene.current, physicsWorld);
+                
+                // Create game with trail activation callback
+                game.current = new TronGame(
+                    scene.current, 
+                    physicsWorld,
+                    handleTrailActivation
+                );
+                
                 game.current.start(name);
                 
                 if (game.current) {
@@ -263,6 +303,7 @@ export const GameScene = () => {
                                     onPositionUpdate={handlePositionUpdate}
                                     gameClient={gameClient.current}
                                     onEnemyPositionsUpdate={handleEnemyPositionsUpdate}
+                                    onTrailActivationUpdate={handleTrailActivation}
                                 />
                             )}
                         </Physics>
@@ -278,6 +319,7 @@ export const GameScene = () => {
                         trailPoints={trailPoints}
                         enemyPositions={enemyPositions}
                     />
+                    <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />
                 </>
             )}
         </>
