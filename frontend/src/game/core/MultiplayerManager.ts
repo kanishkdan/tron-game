@@ -10,6 +10,8 @@ const POSITION_LERP_FACTOR = 0.2; // Smoother interpolation
 const ROTATION_LERP_FACTOR = 0.3; // Quicker rotation updates
 const MAX_VISIBLE_DISTANCE = 300; // Only show players within this distance
 const MAX_PLAYERS_WITH_PHYSICS = 10; // Maximum number of players with full physics
+const MAX_PLAYERS_TOTAL = 16; // Hard limit on total players
+const JOIN_THROTTLE_TIME = 500; // Minimum ms between player joins
 
 export class MultiplayerManager {
     private remotePlayers: Map<string, LightCycle> = new Map();
@@ -28,6 +30,11 @@ export class MultiplayerManager {
     private onTrailActivationUpdate?: (event: TrailActivationEvent) => void;
     // Game instance reference
     private game?: TronGame;
+    // Add new properties for throttling player joins
+    private lastPlayerJoinTime: number = 0;
+    private pendingJoins: Map<string, {position?: { x: number; y: number; z: number }, attempts: number}> = new Map();
+    private readonly MAX_JOIN_ATTEMPTS = 3;
+    private readonly tempVector = new THREE.Vector3(); // Reusable vector to avoid allocations
 
     constructor(
         scene: THREE.Scene, 
@@ -60,82 +67,99 @@ export class MultiplayerManager {
             return;
         }
 
+        // Check if we already have too many players
+        if (this.remotePlayers.size >= MAX_PLAYERS_TOTAL) {
+            console.warn(`Maximum player limit reached (${MAX_PLAYERS_TOTAL}), rejecting player ${playerId}`);
+            return;
+        }
+
+        // Throttle player joins to prevent multiple players from joining at the same time
+        const now = performance.now();
+        if (now - this.lastPlayerJoinTime < JOIN_THROTTLE_TIME) {
+            // Queue this player join for later
+            console.log(`Throttling join for player ${playerId}, will retry soon`);
+            
+            // Store in pending joins with position
+            const existing = this.pendingJoins.get(playerId);
+            this.pendingJoins.set(playerId, {
+                position,
+                attempts: existing ? existing.attempts + 1 : 1
+            });
+            
+            // Schedule retry with exponential backoff
+            const attempts = this.pendingJoins.get(playerId)?.attempts || 1;
+            if (attempts <= this.MAX_JOIN_ATTEMPTS) {
+                setTimeout(() => {
+                    const pendingJoin = this.pendingJoins.get(playerId);
+                    if (pendingJoin) {
+                        this.pendingJoins.delete(playerId);
+                        this.addPlayer(playerId, pendingJoin.position);
+                    }
+                }, JOIN_THROTTLE_TIME * Math.pow(2, attempts - 1));
+            } else {
+                console.warn(`Failed to add player ${playerId} after ${attempts} attempts`);
+                this.pendingJoins.delete(playerId);
+            }
+            return;
+        }
+        
+        // Remember the time of this join to throttle future joins
+        this.lastPlayerJoinTime = now;
+
         // Remove any existing instance first
         this.removePlayer(playerId);
 
         try {
-            let cycle: LightCycle;
-            
             // Convert position to THREE.Vector3 if provided
             let pos: THREE.Vector3 | undefined;
             if (position) {
-                pos = new THREE.Vector3(
+                // Use temporary vector to avoid allocations
+                this.tempVector.set(
                     position.x || 0, 
                     position.y || 0.5, 
                     position.z || 0
                 );
+                pos = this.tempVector;
             }
             
             // Use the game instance to create players if available (preferred approach)
             if (this.game) {
-                cycle = this.game.addRemotePlayer(playerId, pos);
-            } else {
-                // Fallback to direct creation if game isn't available
-                // This is a simplified version for backward compatibility
-                const initialPos = pos || new THREE.Vector3(0, 0.5, 0);
-                cycle = new LightCycle(
-                    this.scene,
-                    initialPos,
-                    this.world,
-                    () => {
-                        console.log(`Remote player ${playerId} collision`);
-                    },
-                    (secondsRemaining) => {
-                        if (this.onTrailActivationUpdate) {
-                            this.onTrailActivationUpdate({
-                                playerId,
-                                secondsRemaining
-                            });
-                        }
-                    }
-                );
+                const cycle = this.game.addRemotePlayer(playerId, pos);
                 
-                // If we have too many remote players already, use simplified physics
-                if (this.remotePlayers.size >= MAX_PLAYERS_WITH_PHYSICS) {
-                    const body = cycle.getBody();
-                    if (body) {
-                        body.type = CANNON.Body.KINEMATIC;
-                        body.collisionResponse = false;
-                    }
+                // Handle case where cycle creation failed
+                if (!cycle) {
+                    console.warn(`Failed to create remote player ${playerId} through game instance`);
+                    return; // Exit early, don't add to maps
                 }
-            }
-            
-            // Store the player
-            this.remotePlayers.set(playerId, cycle);
-            
-            // Set initial position for tracking
-            if (position) {
-                console.log(`Setting initial position for ${playerId}:`, position);
-                this.remotePositions.set(playerId, new THREE.Vector3(
-                    position.x || 0, 
-                    position.y || 0.5, 
-                    position.z || 0
-                ));
                 
-                // Also store for minimap
-                this.enemyPositions.set(playerId, {
-                    x: position.x || 0,
-                    z: position.z || 0
-                });
+                // Store the player
+                this.remotePlayers.set(playerId, cycle);
+                
+                // Set initial position for tracking
+                if (position) {
+                    // Create a new Vector3 for storage (can't use the temp vector here)
+                    const storedPos = new THREE.Vector3(
+                        position.x || 0,
+                        position.y || 0.5,
+                        position.z || 0
+                    );
+                    this.remotePositions.set(playerId, storedPos);
+                    
+                    // Store for minimap
+                    this.enemyPositions.set(playerId, {
+                        x: position.x || 0,
+                        z: position.z || 0
+                    });
+                } else {
+                    this.remotePositions.set(playerId, new THREE.Vector3(0, 0.5, 0));
+                    this.enemyPositions.set(playerId, {x: 0, z: 0});
+                }
+                
+                // Store initial rotation
+                this.remoteRotations.set(playerId, 0);
             } else {
-                this.remotePositions.set(playerId, new THREE.Vector3(0, 0.5, 0));
-                this.enemyPositions.set(playerId, {x: 0, z: 0});
+                console.warn("No game instance available, can't add player", playerId);
             }
-            
-            // Store initial rotation
-            this.remoteRotations.set(playerId, 0);
-            
-            return cycle;
         } catch (error) {
             console.error(`Error creating remote player ${playerId}:`, error);
         }
@@ -167,43 +191,77 @@ export class MultiplayerManager {
             return;
         }
         
-        // Create the player if they don't exist
-        if (!this.remotePlayers.has(playerId)) {
-            console.log(`Creating player on position update: ${playerId}`);
-            this.addPlayer(playerId, position);
-            return;
-        }
+        try {
+            // Create the player if they don't exist
+            if (!this.remotePlayers.has(playerId)) {
+                this.addPlayer(playerId, position);
+                return;
+            }
 
-        // Store the target position/rotation for smooth interpolation
-        this.remotePositions.set(
-            playerId, 
-            new THREE.Vector3(position.x, position.y || 0.5, position.z)
-        );
-        
-        // Update minimap position
-        this.enemyPositions.set(playerId, {x: position.x, z: position.z});
-        
-        if (rotation !== undefined) {
-            this.remoteRotations.set(playerId, rotation);
+            // Store the target position/rotation for smooth interpolation
+            let positionVector = this.remotePositions.get(playerId);
+            if (!positionVector) {
+                positionVector = new THREE.Vector3();
+                this.remotePositions.set(playerId, positionVector);
+            }
             
-            // Immediately apply rotation to get better visual feedback
-            const cycle = this.remotePlayers.get(playerId);
-            if (cycle) {
-                const currentRotation = cycle.getRotation();
-                // Determine turn direction based on shortest path to target rotation
-                const diff = ((rotation - currentRotation) + Math.PI) % (Math.PI * 2) - Math.PI;
-                const direction = diff > 0 ? 'left' : diff < 0 ? 'right' : null;
+            // Update the existing vector instead of creating a new one
+            positionVector.set(position.x, position.y || 0.5, position.z);
+            
+            // Update minimap position
+            let mapPos = this.enemyPositions.get(playerId);
+            if (!mapPos) {
+                mapPos = {x: position.x, z: position.z};
+                this.enemyPositions.set(playerId, mapPos);
+            } else {
+                mapPos.x = position.x;
+                mapPos.z = position.z;
+            }
+            
+            if (rotation !== undefined) {
+                this.remoteRotations.set(playerId, rotation);
                 
-                if (direction) {
-                    cycle.move(direction);
-                    // After turning, reset to straight
-                    setTimeout(() => cycle.move(null), 100);
+                // Apply rotation with safeguards
+                const cycle = this.remotePlayers.get(playerId);
+                if (cycle) {
+                    const currentRotation = cycle.getRotation();
+                    // Determine turn direction based on shortest path to target rotation
+                    const diff = ((rotation - currentRotation) + Math.PI) % (Math.PI * 2) - Math.PI;
+                    const direction = diff > 0 ? 'left' : diff < 0 ? 'right' : null;
+                    
+                    if (direction) {
+                        cycle.move(direction);
+                        // After turning, reset to straight with safety check
+                        setTimeout(() => {
+                            if (this.remotePlayers.has(playerId)) {
+                                const updatedCycle = this.remotePlayers.get(playerId);
+                                if (updatedCycle) {
+                                    updatedCycle.move(null);
+                                }
+                            }
+                        }, 100);
+                    }
                 }
             }
+        } catch (error) {
+            console.error(`Error updating position for player ${playerId}:`, error);
         }
     }
 
     update(deltaTime: number) {
+        // Process any pending player joins first if we can
+        if (performance.now() - this.lastPlayerJoinTime >= JOIN_THROTTLE_TIME && this.pendingJoins.size > 0) {
+            // Get first entry from pendingJoins in a type-safe way
+            const firstPlayerId = Array.from(this.pendingJoins.keys())[0];
+            if (firstPlayerId) {
+                const data = this.pendingJoins.get(firstPlayerId);
+                this.pendingJoins.delete(firstPlayerId);
+                if (data) {
+                    this.addPlayer(firstPlayerId, data.position);
+                }
+            }
+        }
+        
         this.updateAccumulator += deltaTime;
         
         // Only update visual positions periodically to improve performance
@@ -213,58 +271,69 @@ export class MultiplayerManager {
             let visiblePlayerCount = 0;
             
             this.remotePlayers.forEach((player, id) => {
-                if (id === this.localPlayerId) return;
-                
-                // Get target position and rotation
-                const targetPosition = this.remotePositions.get(id);
-                const targetRotation = this.remoteRotations.get(id);
-                
-                if (targetPosition && targetRotation !== undefined) {
-                    // Skip visual updates for distant players
-                    const distanceToPlayer = this.localPlayerPosition.distanceTo(targetPosition);
-                    if (distanceToPlayer > MAX_VISIBLE_DISTANCE) {
-                        // Still update position for the minimap
-                        this.enemyPositions.set(id, {
-                            x: targetPosition.x,
-                            z: targetPosition.z
-                        });
-                        return;
-                    }
+                try {
+                    if (id === this.localPlayerId) return;
                     
-                    visiblePlayerCount++;
+                    // Get target position and rotation
+                    const targetPosition = this.remotePositions.get(id);
+                    const targetRotation = this.remoteRotations.get(id);
                     
-                    // Get current position and interpolate
-                    const currentPosition = player.getPosition();
-                    
-                    // Smoother interpolation
-                    currentPosition.lerp(targetPosition, POSITION_LERP_FACTOR);
-                    
-                    // Update physics body
-                    const body = player.getBody();
-                    if (body) {
-                        body.position.copy(currentPosition as any);
+                    if (targetPosition && targetRotation !== undefined) {
+                        // Skip visual updates for distant players
+                        const distanceToPlayer = this.localPlayerPosition.distanceTo(targetPosition);
+                        if (distanceToPlayer > MAX_VISIBLE_DISTANCE) {
+                            return;
+                        }
                         
-                        // Also update enemy position for minimap immediately
-                        this.enemyPositions.set(id, {
-                            x: currentPosition.x,
-                            z: currentPosition.z
-                        });
+                        visiblePlayerCount++;
+                        
+                        // Get current position and interpolate
+                        const currentPosition = player.getPosition();
+                        
+                        // Smoother interpolation
+                        currentPosition.lerp(targetPosition, POSITION_LERP_FACTOR);
+                        
+                        // Update physics body
+                        const body = player.getBody();
+                        if (body) {
+                            body.position.copy(currentPosition as any);
+                            
+                            // Update enemy position for minimap
+                            let mapPos = this.enemyPositions.get(id);
+                            if (!mapPos) {
+                                mapPos = {x: currentPosition.x, z: currentPosition.z};
+                                this.enemyPositions.set(id, mapPos);
+                            } else {
+                                mapPos.x = currentPosition.x;
+                                mapPos.z = currentPosition.z;
+                            }
+                        }
                     }
+                } catch (error) {
+                    console.error(`Error updating remote player ${id}:`, error);
+                    // Remove problematic player
+                    this.removePlayer(id);
                 }
             });
             
             // Log performance info occasionally
             const now = performance.now();
             if (now - this.lastPerformanceLog > 5000) {
-                console.log(`Multiplayer: ${this.remotePlayers.size} total players, ${visiblePlayerCount} visible`);
+                console.log(`Multiplayer: ${this.remotePlayers.size} total players, ${visiblePlayerCount} visible, ${this.pendingJoins.size} pending`);
                 this.lastPerformanceLog = now;
             }
         }
         
-        // Update all remote players
+        // Update all remote players with try/catch for safety
         this.remotePlayers.forEach((player, id) => {
-            if (id !== this.localPlayerId) {
-                player.update(deltaTime);
+            try {
+                if (id !== this.localPlayerId) {
+                    player.update(deltaTime);
+                }
+            } catch (error) {
+                console.error(`Error in update for player ${id}:`, error);
+                // Remove problematic player
+                this.removePlayer(id);
             }
         });
     }

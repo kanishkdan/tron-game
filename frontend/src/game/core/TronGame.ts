@@ -72,30 +72,50 @@ export class TronGame {
     }
 
     // Add a method to add remote players with delayed trail activation
-    addRemotePlayer(playerId: string, position?: THREE.Vector3): LightCycle {
-        const startPos = position || new THREE.Vector3(
-            Math.random() * this.ARENA_SIZE/2 - this.ARENA_SIZE/4,
-            1,
-            Math.random() * this.ARENA_SIZE/2 - this.ARENA_SIZE/4
-        );
-        
-        const remoteCycle = new LightCycle(
-            this.scene,
-            startPos,
-            this.world,
-            () => this.handleCollision(remoteCycle),
-            (secondsRemaining) => {
-                if (this.onTrailActivationUpdate) {
-                    this.onTrailActivationUpdate({
-                        playerId,
-                        secondsRemaining
-                    });
-                }
+    addRemotePlayer(playerId: string, position?: THREE.Vector3): LightCycle | null {
+        try {
+            // Ensure playerId is valid
+            if (!playerId || this.players.has(playerId)) {
+                console.warn(`Player ${playerId} already exists or invalid ID`);
+                return null;
             }
-        );
-        
-        this.players.set(playerId, remoteCycle);
-        return remoteCycle;
+            
+            // Calculate a safe starting position if none provided
+            const startPos = position || new THREE.Vector3(
+                (Math.random() * 0.5 + 0.1) * this.ARENA_SIZE/2 * (Math.random() > 0.5 ? 1 : -1),
+                1,
+                (Math.random() * 0.5 + 0.1) * this.ARENA_SIZE/2 * (Math.random() > 0.5 ? 1 : -1)
+            );
+            
+            // Check if position is within arena bounds
+            const boundary = this.ARENA_SIZE / 2 - 20;
+            startPos.x = Math.min(Math.max(startPos.x, -boundary), boundary);
+            startPos.z = Math.min(Math.max(startPos.z, -boundary), boundary);
+            
+            // Create new light cycle with collision and trail callbacks
+            const remoteCycle = new LightCycle(
+                this.scene,
+                startPos,
+                this.world,
+                () => this.handleCollision(remoteCycle),
+                (secondsRemaining) => {
+                    if (this.onTrailActivationUpdate) {
+                        this.onTrailActivationUpdate({
+                            playerId,
+                            secondsRemaining
+                        });
+                    }
+                }
+            );
+            
+            // Add to players map
+            this.players.set(playerId, remoteCycle);
+            console.log(`Added remote player: ${playerId} at position ${startPos.x}, ${startPos.y}, ${startPos.z}`);
+            return remoteCycle;
+        } catch (error) {
+            console.error(`Error adding remote player ${playerId}:`, error);
+            return null;
+        }
     }
 
     getPlayer(): LightCycle | null {
@@ -136,13 +156,23 @@ export class TronGame {
     private checkCollisions(cycle: LightCycle) {
         // Get cycle's current position
         const position = cycle.getPosition();
+        
+        // Check if cycle is out of bounds first (faster check)
+        if (Math.abs(position.x) > this.ARENA_SIZE/2 - 10 || 
+            Math.abs(position.z) > this.ARENA_SIZE/2 - 10 || 
+            position.y < -10) {
+            this.handleCollision(cycle);
+            return;
+        }
 
         // Check collisions with other players' light trails
         for (const [name, otherCycle] of this.players) {
             if (otherCycle === cycle) continue;
 
-            // Get other cycle's trail segments
+            // Get other cycle's trail segments - only do this once per cycle
             const trailSegments = otherCycle.getLightTrail();
+            if (trailSegments.length === 0) continue;
+            
             for (const segment of trailSegments) {
                 // Simple collision check with trail segments
                 const segmentPos = segment.position;
@@ -154,11 +184,6 @@ export class TronGame {
                 }
             }
         }
-
-        // Check if cycle is out of bounds
-        if (Math.abs(position.x) > this.ARENA_SIZE/2 - 10 || Math.abs(position.z) > this.ARENA_SIZE/2 - 10 || position.y < -10) {
-            this.handleCollision(cycle);
-        }
     }
 
     private handleCollision(cycle: LightCycle) {
@@ -169,22 +194,29 @@ export class TronGame {
         cycle.dispose();
         
         // Find and remove player
+        let isCurrentPlayer = false;
         for (const [name, playerCycle] of this.players) {
             if (playerCycle === cycle) {
                 this.players.delete(name);
+                // Check if this is the current player
+                if (cycle === this.currentPlayer) {
+                    isCurrentPlayer = true;
+                }
                 break;
             }
         }
-
-        // Check if game is over
-        if (this.players.size <= 1) {
-            this.gameOver();
+        
+        // If this was the current player, restart game after a delay
+        if (isCurrentPlayer) {
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
         }
     }
 
     private createExplosion(position: THREE.Vector3) {
-        // Create particle system for explosion
-        const particleCount = 100;
+        // Create particle system for explosion - further reduce particles for better performance
+        const particleCount = 35; // Reduced from 50
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
@@ -207,9 +239,9 @@ export class TronGame {
             sizes[i] = Math.random() * 1.5;
 
             // Initial velocity - more downward and less spread
-            velocities[i * 3] = (Math.random() - 0.5) * 5; // Less horizontal spread
-            velocities[i * 3 + 1] = Math.random() * 10; // Initial upward velocity
-            velocities[i * 3 + 2] = (Math.random() - 0.5) * 5; // Less horizontal spread
+            velocities[i * 3] = (Math.random() - 0.5) * 4; // Less horizontal spread
+            velocities[i * 3 + 1] = Math.random() * 8; // Initial upward velocity
+            velocities[i * 3 + 2] = (Math.random() - 0.5) * 4; // Less horizontal spread
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -227,9 +259,15 @@ export class TronGame {
         const particles = new THREE.Points(geometry, material);
         this.scene.add(particles);
 
-        // Animate particles with more realistic gravity
-        const gravity = 0.5;
+        // Animate particles with more efficient updates
+        let frame = 0;
+        const maxFrames = 60; // Limit animation to about 1 second
+        const gravity = 0.3; // Reduced gravity effect
+        
         const animate = () => {
+            frame++;
+            
+            // Update positions and velocities
             for (let i = 0; i < particleCount; i++) {
                 // Update velocity with gravity
                 velocities[i * 3 + 1] -= gravity;
@@ -238,38 +276,24 @@ export class TronGame {
                 positions[i * 3] += velocities[i * 3] * 0.1;
                 positions[i * 3 + 1] += velocities[i * 3 + 1] * 0.1;
                 positions[i * 3 + 2] += velocities[i * 3 + 2] * 0.1;
-
-                // Fade out based on height
-                const heightFactor = Math.max(0, positions[i * 3 + 1] / 10);
-                colors[i * 3 + 3] = color.r * heightFactor;
-                colors[i * 3 + 4] = color.g * heightFactor;
-                colors[i * 3 + 5] = color.b * heightFactor;
             }
+            
+            // Update geometry attributes
             geometry.attributes.position.needsUpdate = true;
-            geometry.attributes.color.needsUpdate = true;
-
-            if (material.opacity > 0) {
-                material.opacity -= 0.01;
+            
+            // Fade out particle system
+            material.opacity = Math.max(0, 0.8 * (1 - frame / maxFrames));
+            
+            if (frame < maxFrames && material.opacity > 0.05) {
                 requestAnimationFrame(animate);
             } else {
+                // Clean up resources
                 this.scene.remove(particles);
                 geometry.dispose();
                 material.dispose();
             }
         };
-        animate();
-    }
-
-    private gameOver() {
-        this.isGameOver = true;
         
-        // Clean up resources
-        this.players.forEach(cycle => cycle.dispose());
-        this.players.clear();
-        this.arena?.dispose();
-    }
-
-    dispose() {
-        this.gameOver();
+        animate();
     }
 } 

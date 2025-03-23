@@ -37,7 +37,7 @@ export class Arena {
         this.scene.add(ambientLight);
 
         // Main directional light
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 5);
         directionalLight.position.set(0, 100, 0);
         directionalLight.castShadow = true;
         this.scene.add(directionalLight);
