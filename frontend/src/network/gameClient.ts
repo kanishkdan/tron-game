@@ -40,8 +40,14 @@ export class GameClient {
     if (serverUrl) {
       this.serverUrl = serverUrl;
     } else if (import.meta.env.VITE_WS_URL) {
-      this.serverUrl = import.meta.env.VITE_WS_URL;
+      // Remove trailing slash if present
+      this.serverUrl = import.meta.env.VITE_WS_URL.replace(/\/$/, '');
+    } else if (import.meta.env.VITE_API_URL) {
+      // Convert HTTP(S) URL to WebSocket URL
+      const apiUrl = import.meta.env.VITE_API_URL.replace(/\/$/, '');
+      this.serverUrl = apiUrl.replace(/^http/, 'ws');
     } else {
+      // In development, use localhost
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname;
       const port = '8000'; // Backend port
