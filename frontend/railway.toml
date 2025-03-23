@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "echo 'No build needed, serving static files'"
+buildCommand = "npm run build"
 
 [deploy]
 startCommand = "npx serve dist"
