@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "echo 'No build needed, serving static files'"
 
 [deploy]
-startCommand = "npx serve dist --host 0.0.0.0 --port $PORT"
+startCommand = "npx serve dist 0.0.0.0 --port $PORT"
 healthcheckPath = "/"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
