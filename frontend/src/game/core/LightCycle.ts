@@ -5,6 +5,11 @@ import * as CANNON from 'cannon-es';
 import { useKeyboardControls } from '@react-three/drei';
 import { ColorUtils, TronColor } from '../utils/ColorUtils';
 
+// LOD level constants
+export const LOD_HIGH = 0;
+export const LOD_MEDIUM = 1;
+export const LOD_LOW = 2;
+
 // Declare global gameRenderer property for TypeScript
 declare global {
     interface Window {
@@ -13,6 +18,13 @@ declare global {
 }
 
 export class LightCycle {
+    // Static shared resources
+    private static sharedModelGeometry: THREE.BufferGeometry | null = null;
+    private static sharedModels: Map<string, THREE.Group> = new Map();
+    private static sharedMaterials: Map<string, THREE.Material> = new Map();
+    private static isLoadingModels: boolean = false;
+    private static resourcesScene: THREE.Scene | null = null;
+
     private mesh!: THREE.Group;
     private modelContainer!: THREE.Group; // New container to adjust model position
     private body: CANNON.Body;
@@ -35,8 +47,8 @@ export class LightCycle {
     private lastTrailPoint: THREE.Vector3 | null = null;
     private trailLine: THREE.Mesh | null = null;
     private trailGeometry: THREE.BufferGeometry | null = null;
-    private trailMaterial: THREE.MeshBasicMaterial | null = null;
-    private readonly MAX_TRAIL_LENGTH = 10;
+    private trailMaterial: THREE.MeshStandardMaterial | null = null;
+    private readonly MAX_TRAIL_LENGTH = 100;
     private scene: THREE.Scene;
     private bikeLight: THREE.PointLight; // Single consolidated light for the bike
     private initialScale = new THREE.Vector3(3.0, 2.5, 2.5);
@@ -71,20 +83,88 @@ export class LightCycle {
     // LOD for trail segments to improve performance
     private trailUpdateCounter: number = 0;
     private readonly TRAIL_UPDATE_INTERVAL = 2; // Only update every X frames
+    private currentLODLevel: number = LOD_HIGH;
+    private useSharedResources: boolean = false;
 
     private keydownHandler: (event: KeyboardEvent) => void = () => {};
     private keyupHandler: (event: KeyboardEvent) => void = () => {};
     private gameControlHandler: EventListener = () => {};
+
+    /**
+     * Initialize shared resources for all LightCycle instances
+     * This reduces memory usage and CPU/GPU load when creating multiple bikes
+     */
+    public static initializeSharedResources(scene: THREE.Scene): void {
+        if (this.resourcesScene === scene) return; // Already initialized
+        
+        this.resourcesScene = scene;
+        this.isLoadingModels = true;
+        
+        // Load shared model only once
+        const mtlLoader = new MTLLoader();
+        const objLoader = new OBJLoader();
+
+        mtlLoader.load('/models/bike2.mtl', (materials) => {
+            materials.preload();
+            objLoader.setMaterials(materials);
+            objLoader.load('/models/bike2.obj', (object) => {
+                // Store the geometry for reuse
+                object.traverse((child) => {
+                    if (child instanceof THREE.Mesh && child.geometry) {
+                        if (!this.sharedModelGeometry) {
+                            this.sharedModelGeometry = child.geometry.clone();
+                        }
+                    }
+                });
+                
+                // Create a template model to clone
+                this.sharedModels.set('bike', object.clone());
+                
+                // Create shared materials
+                ColorUtils.getAllTronColors().forEach((color: TronColor) => {
+                    // Create body material
+                    const bodyMaterial = new THREE.MeshPhysicalMaterial({
+                        color: 0x000000,
+                        metalness: 0.9,
+                        roughness: 0.3,
+                        clearcoat: 1.0,
+                        clearcoatRoughness: 0.1
+                    });
+                    
+                    // Create glow material for each color
+                    const glowMaterial = new THREE.MeshPhysicalMaterial({
+                        color: color.hex,
+                        emissive: color.hex,
+                        emissiveIntensity: 0.8,
+                        metalness: 0.9,
+                        roughness: 0.2,
+                        clearcoat: 1.0,
+                        clearcoatRoughness: 0.1,
+                        transparent: true,
+                        opacity: 0.9
+                    });
+                    
+                    // Store materials
+                    this.sharedMaterials.set(`body_${color.name}`, bodyMaterial);
+                    this.sharedMaterials.set(`glow_${color.name}`, glowMaterial);
+                });
+                
+                this.isLoadingModels = false;
+            });
+        });
+    }
 
     constructor(
         scene: THREE.Scene, 
         initialPosition: THREE.Vector3,
         physicsWorld: CANNON.World,
         onCollision?: () => void,
-        trailActivationCallback?: (secondsRemaining: number) => void
+        trailActivationCallback?: (secondsRemaining: number) => void,
+        useSharedResources: boolean = false
     ) {
         // Store the callback for trail activation countdown
         this.trailActivationCallback = trailActivationCallback;
+        this.useSharedResources = useSharedResources;
         
         // Record creation time for trail activation delay
         this.creationTime = performance.now();
@@ -99,14 +179,15 @@ export class LightCycle {
         this.bikeLight = new THREE.PointLight(this.bikeColor.hex, 1.5, 20);
         scene.add(this.bikeLight);
 
-        // Initialize trail system with bike color
+        // Initialize trail system with bike color - activate trails immediately for remote players
+        this.trailsActive = true; // Always active for remote players
         this.initLightTrail();
 
         // Create physics body with reduced height
         const shape = new CANNON.Box(new CANNON.Vec3(3, this.PHYSICS_HEIGHT, 6));
         this.body = new CANNON.Body({
             mass: 1,
-            position: new CANNON.Vec3(0, this.PHYSICS_HEIGHT, 0), // Position at half height
+            position: new CANNON.Vec3(initialPosition.x, this.PHYSICS_HEIGHT, initialPosition.z),
             shape: shape,
             linearDamping: 0.5,
             angularDamping: 0.8,
@@ -148,6 +229,47 @@ export class LightCycle {
 
         // Start input handling
         this.handleInput();
+    }
+
+    // New method to handle LOD changes
+    setLODLevel(level: number): void {
+        this.currentLODLevel = level;
+        
+        // Update visibility and detail based on LOD level
+        if (this.modelContainer && this.trailLine) {
+            // Model is always visible but with different detail levels
+            switch (level) {
+                case LOD_HIGH:
+                    // Full detail model and effects
+                    this.modelContainer.visible = true;
+                    this.trailLine.visible = this.trailsActive;
+                    this.bikeLight.intensity = 1.5;
+                    break;
+                    
+                case LOD_MEDIUM:
+                    // Medium detail: simplified trails, reduced lighting
+                    this.modelContainer.visible = true;
+                    this.trailLine.visible = this.trailsActive;
+                    this.bikeLight.intensity = 0.7;
+                    break;
+                    
+                case LOD_LOW:
+                    // Low detail: no trails, minimal lighting
+                    this.modelContainer.visible = true;
+                    this.trailLine.visible = false;
+                    this.bikeLight.intensity = 0;
+                    break;
+            }
+        }
+    }
+    
+    // Minimal update for distant bikes
+    updateMinimal(): void {
+        if (!this.modelContainer) return;
+        
+        // Only update position and rotation (no physics, no trails)
+        this.modelContainer.position.copy(this.body.position as any);
+        this.modelContainer.rotation.y = this.currentRotation;
     }
 
     private handleInput() {
@@ -214,7 +336,7 @@ export class LightCycle {
         window.addEventListener('gameControl', this.gameControlHandler);
     }
 
-    update(deltaTime: number) {
+    update(deltaTime: number, skipTrails: boolean = false) {
         if (!this.modelContainer) return;
 
         const currentTime = performance.now();
@@ -227,11 +349,8 @@ export class LightCycle {
         // Then update visual elements
         this.updateVisuals();
         
-        // Check if trails should be activated
-        this.checkTrailActivation(currentTime);
-        
-        // Update trail only if active - and using interval for performance
-        if (this.trailsActive) {
+        // Always update trails for remote players
+        if (this.trailsActive && !skipTrails) {
             this.trailUpdateCounter++;
             if (this.trailUpdateCounter >= this.TRAIL_UPDATE_INTERVAL) {
                 this.updateTrail();
@@ -422,7 +541,7 @@ export class LightCycle {
                     this.lastTrailPoint.x, 
                     0, 
                     this.lastTrailPoint.z
-                )) > 5.0; // Slightly increased minimum distance for fewer points
+                )) > 2.0; // Reduced minimum distance for more frequent trail points
         
         if (shouldAddPoint) {
             // Create the new point at the bike's current height
@@ -454,7 +573,11 @@ export class LightCycle {
         
         // Create extruded 3D trail (a flat ribbon with width and height)
         const positions: number[] = [];
+        const normals: number[] = [];
         const indices: number[] = [];
+        
+        // Need at least 2 points to create a trail
+        if (this.trailPoints.length < 2) return;
         
         // Process trail points to create extruded geometry
         for (let i = 0; i < this.trailPoints.length; i++) {
@@ -476,8 +599,8 @@ export class LightCycle {
             segmentPerpendicular = new THREE.Vector3(-segmentDirection.z, 0, segmentDirection.x).normalize();
             
             // Calculate the bottom height for this segment
-            const bottomHeight = Math.max(0, point.y - 0.1); // Very small offset from ground
-            const topHeight = point.y + this.BASE_TRAIL_HEIGHT; // Restore original tall trail height
+            const bottomHeight = 0.1;  // Just slightly above the ground
+            const topHeight = 4.0;     // Taller, more visible trail
             
             // Create the 4 corners of the ribbon segment
             // Top left
@@ -486,6 +609,7 @@ export class LightCycle {
                 topHeight,
                 point.z + segmentPerpendicular.z * this.TRAIL_WIDTH
             );
+            normals.push(segmentPerpendicular.x, 0, segmentPerpendicular.z);
             
             // Top right
             positions.push(
@@ -493,6 +617,7 @@ export class LightCycle {
                 topHeight,
                 point.z - segmentPerpendicular.z * this.TRAIL_WIDTH
             );
+            normals.push(-segmentPerpendicular.x, 0, -segmentPerpendicular.z);
             
             // Bottom left
             positions.push(
@@ -500,6 +625,7 @@ export class LightCycle {
                 bottomHeight,
                 point.z + segmentPerpendicular.z * this.TRAIL_WIDTH
             );
+            normals.push(segmentPerpendicular.x, 0, segmentPerpendicular.z);
             
             // Bottom right
             positions.push(
@@ -507,21 +633,23 @@ export class LightCycle {
                 bottomHeight,
                 point.z - segmentPerpendicular.z * this.TRAIL_WIDTH
             );
+            normals.push(-segmentPerpendicular.x, 0, -segmentPerpendicular.z);
             
             // Create faces (triangles) - only if we have a next point
             if (i < this.trailPoints.length - 1) {
                 const baseIdx = i * 4;
+                
                 // Top face
-                indices.push(baseIdx, baseIdx + 1, baseIdx + 4);
-                indices.push(baseIdx + 1, baseIdx + 5, baseIdx + 4);
+                indices.push(baseIdx, baseIdx + 4, baseIdx + 1);
+                indices.push(baseIdx + 1, baseIdx + 4, baseIdx + 5);
                 
                 // Left side
                 indices.push(baseIdx, baseIdx + 2, baseIdx + 4);
                 indices.push(baseIdx + 2, baseIdx + 6, baseIdx + 4);
                 
                 // Right side
-                indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 5);
-                indices.push(baseIdx + 3, baseIdx + 7, baseIdx + 5);
+                indices.push(baseIdx + 1, baseIdx + 5, baseIdx + 3);
+                indices.push(baseIdx + 3, baseIdx + 5, baseIdx + 7);
                 
                 // Bottom face
                 indices.push(baseIdx + 2, baseIdx + 3, baseIdx + 6);
@@ -532,8 +660,20 @@ export class LightCycle {
         // Update geometry only if we have valid data
         if (positions.length > 0 && indices.length > 0) {
             this.trailGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+            this.trailGeometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
             this.trailGeometry.setIndex(indices);
-            this.trailGeometry.computeVertexNormals();
+            
+            // Clear any previous index or attributes that might be cached
+            this.trailGeometry.index = new THREE.BufferAttribute(new Uint16Array(indices), 1);
+            
+            // Make sure the geometry knows it's changed
+            this.trailGeometry.attributes.position.needsUpdate = true;
+            this.trailGeometry.attributes.normal.needsUpdate = true;
+            this.trailGeometry.index.needsUpdate = true;
+            
+            // Explicitly compute bounding box/sphere for frustum culling
+            this.trailGeometry.computeBoundingSphere();
+            this.trailGeometry.computeBoundingBox();
         }
     }
 
@@ -657,25 +797,41 @@ export class LightCycle {
     private initLightTrail() {
         // Create trail geometry for 3D extruded trail
         this.trailGeometry = new THREE.BufferGeometry();
-        this.trailMaterial = new THREE.MeshBasicMaterial({
+        
+        // Fix: Use a material that works better with Three.js's rendering pipeline
+        this.trailMaterial = new THREE.MeshStandardMaterial({
             color: this.bikeColor.hex,
-            transparent: true,
-            opacity: 0.9,
-            side: THREE.DoubleSide,
-            depthWrite: true, // Enable depth writing for proper visual appearance
             emissive: this.bikeColor.hex,
-            emissiveIntensity: 0.8 // Add emissive for self-illumination
+            emissiveIntensity: 1.5,  // Brighter emission for better visibility
+            roughness: 0.3,
+            metalness: 0.2,
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide,
+            depthWrite: true
         });
 
         // Initialize with empty positions
         const positions = new Float32Array(this.MAX_TRAIL_LENGTH * 12); // 4 vertices per point
+        const normals = new Float32Array(this.MAX_TRAIL_LENGTH * 12);
+        
         this.trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        this.trailGeometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
         
         // Create mesh
         this.trailLine = new THREE.Mesh(this.trailGeometry, this.trailMaterial);
         this.trailLine.renderOrder = 1;
         this.trailLine.frustumCulled = false; // Disable frustum culling to ensure trail is always visible
+        
+        // Add to scene
         this.scene.add(this.trailLine);
+        
+        // Create initial point to start the trail
+        if (this.modelContainer) {
+            const pos = this.modelContainer.position;
+            this.lastTrailPoint = new THREE.Vector3(pos.x, 0.1, pos.z);
+            this.trailPoints.push(this.lastTrailPoint.clone());
+        }
     }
 
     private jump() {
@@ -689,12 +845,85 @@ export class LightCycle {
     }
 
     private loadBikeModel() {
-        const mtlLoader = new MTLLoader();
-        const objLoader = new OBJLoader();
-
         // Create a container group to position the bike correctly
         this.modelContainer = new THREE.Group();
         this.scene.add(this.modelContainer);
+        
+        if (this.useSharedResources && LightCycle.sharedModels.has('bike') && !LightCycle.isLoadingModels) {
+            // Use shared model (much faster)
+            const sharedModel = LightCycle.sharedModels.get('bike');
+            if (sharedModel) {
+                this.mesh = sharedModel.clone();
+                this.mesh.scale.copy(this.initialScale);
+                this.mesh.position.y = -1.0;
+                
+                // Get shared materials for this color
+                const bodyMaterial = LightCycle.sharedMaterials.get('body_' + this.bikeColor.name) || 
+                    new THREE.MeshPhysicalMaterial({
+                        color: 0x000000,
+                        metalness: 0.9,
+                        roughness: 0.3,
+                        clearcoat: 1.0,
+                        clearcoatRoughness: 0.1
+                    });
+                
+                const glowMaterial = LightCycle.sharedMaterials.get('glow_' + this.bikeColor.name) || 
+                    new THREE.MeshPhysicalMaterial({
+                        color: this.bikeColor.hex,
+                        emissive: this.bikeColor.hex,
+                        emissiveIntensity: 0.8,
+                        metalness: 0.9,
+                        roughness: 0.2,
+                        clearcoat: 1.0,
+                        clearcoatRoughness: 0.1,
+                        transparent: true,
+                        opacity: 0.9
+                    });
+                
+                // Apply shared materials and create simplified edge highlights
+                this.mesh.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        // Add simplified edge highlights for performance
+                        if (this.currentLODLevel === LOD_HIGH) {
+                            const edges = new THREE.EdgesGeometry(child.geometry, 30);
+                            const edgesMesh = new THREE.LineSegments(
+                                edges,
+                                new THREE.LineBasicMaterial({ 
+                                    color: this.bikeColor.hex,
+                                    transparent: true,
+                                    opacity: 0.7,
+                                    linewidth: 1
+                                })
+                            );
+                            child.add(edgesMesh);
+                        }
+
+                        // Apply shared materials
+                        child.material = child.name.toLowerCase().match(/wheel|rim|engine/) 
+                            ? glowMaterial 
+                            : bodyMaterial;
+
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                this.modelContainer.add(this.mesh);
+                
+                // Initialize trail position
+                this.lastTrailPoint = new THREE.Vector3(
+                    this.mesh.position.x,
+                    this.BASE_TRAIL_HEIGHT,
+                    this.mesh.position.z
+                );
+                
+                return;
+            }
+        }
+        
+        // Fallback to traditional loading if shared resources aren't available
+        const mtlLoader = new MTLLoader();
+        const objLoader = new OBJLoader();
 
         mtlLoader.load('/models/bike2.mtl', (materials) => {
             materials.preload();
@@ -819,5 +1048,22 @@ export class LightCycle {
                 1.0,
                 -Math.cos(this.currentRotation) * 2
             ));
+    }
+
+    // Add cleanup method for trails
+    cleanupTrails(): void {
+        if (this.trailLine) {
+            if (this.trailLine.parent) {
+                this.trailLine.parent.remove(this.trailLine);
+            }
+            if (this.trailGeometry) {
+                this.trailGeometry.dispose();
+            }
+            if (this.trailMaterial) {
+                this.trailMaterial.dispose();
+            }
+            this.trailLine = null;
+        }
+        this.trailPoints = [];
     }
 } 

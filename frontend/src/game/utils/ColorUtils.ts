@@ -37,4 +37,8 @@ export class ColorUtils {
     static releaseColor(hex: number) {
         this.usedColors.delete(hex);
     }
+
+    static getAllTronColors(): TronColor[] {
+        return Object.values(this.TRON_COLORS);
+    }
 } 
