@@ -54,14 +54,12 @@ const GameRenderer = ({
     game, 
     onPositionUpdate, 
     gameClient,
-    onEnemyPositionsUpdate,
-    onTrailActivationUpdate
+    onEnemyPositionsUpdate
 }: { 
     game: TronGame; 
     onPositionUpdate: (pos: { x: number; y: number; z: number }, trailPoints: { x: number; z: number }[]) => void;
     gameClient: GameClient;
     onEnemyPositionsUpdate: (enemies: {id: string, position: {x: number, z: number}}[]) => void;
-    onTrailActivationUpdate: (event: TrailActivationEvent) => void;
 }) => {
     const { camera, gl, scene } = useThree();
     const cameraController = useRef<CameraController>();
@@ -69,91 +67,43 @@ const GameRenderer = ({
     const world = useRef<CANNON.World>();
     const lastUpdateTime = useRef<number>(0);
     const lastEnemyUpdateTime = useRef<number>(0);
-    const updateInterval = 100; // Send position updates every 100ms
-    const enemyUpdateInterval = 200; // Update enemy positions on minimap every 200ms
+    const updateInterval = 50; // Send position updates every 50ms
+    const enemyUpdateInterval = 50; // Update enemy positions every 50ms
 
     useEffect(() => {
         window.gameRenderer = gl;
         
-        // Initialize physics world for remote players
+        // Initialize physics world
         world.current = new CANNON.World();
         world.current.gravity.set(0, -19.81, 0);
         
-        // Initialize multiplayer manager with trail activation callback
-        multiplayerManager.current = new MultiplayerManager(
-            scene, 
-            world.current,
-            onTrailActivationUpdate
-        );
-        
-        // Connect multiplayer manager with game instance
-        if (game) {
-            multiplayerManager.current.setGameInstance(game);
-            console.log('[DEBUG] Connected MultiplierManager to TronGame instance');
-        } else {
-            console.error('[DEBUG] No game instance available when setting up MultiplayerManager');
-        }
-        
-        // Set local player ID
+        // Initialize multiplayer manager
+        multiplayerManager.current = new MultiplayerManager(scene, world.current);
         multiplayerManager.current.setLocalPlayerId(gameClient.getPlayerId() || '');
-        console.log(`[DEBUG] Set local player ID: ${gameClient.getPlayerId()}`);
 
         // Set up WebSocket event handlers
         gameClient.on('player_joined', (data) => {
-            console.log('[DEBUG] Player joined event:', data);
-            if (multiplayerManager.current) {
-                multiplayerManager.current.addPlayer(data.player_id);
-            } else {
-                console.error('[DEBUG] MultiplayerManager not available during player_joined event');
-            }
+            console.log('Player joined:', data.player_id);
+            multiplayerManager.current?.addPlayer(data.player_id);
         });
 
         gameClient.on('player_left', (data) => {
-            console.log('[DEBUG] Player left event:', data);
+            console.log('Player left:', data.player_id);
             multiplayerManager.current?.removePlayer(data.player_id);
         });
 
         gameClient.on('player_moved', (data) => {
-            console.log('[DEBUG] Player moved event received:', data);
-            // Verify we have position and rotation data
-            if (!data.position) {
-                console.error('[DEBUG] Missing position data in player_moved event');
-                return;
-            }
-            
-            // Pass the proper rotation value to updatePlayerPosition
-            const rotation = data.position.rotation !== undefined 
-                ? data.position.rotation 
-                : undefined;
-                
-            console.log(`[DEBUG] Updating player ${data.player_id} position:`, 
-                data.position, 'rotation:', rotation);
-                
             multiplayerManager.current?.updatePlayerPosition(
                 data.player_id, 
                 data.position,
-                rotation
+                data.position.rotation
             );
         });
 
         gameClient.on('game_state', (data) => {
-            const localPlayerId = gameClient.getPlayerId();
-            console.log('[DEBUG] Game state received:', data);
-            console.log(`[DEBUG] Local player ID: ${localPlayerId}`);
-            console.log('[DEBUG] All players in game state:', Object.keys(data.players));
-            
-            const remotePlayerCount = Object.entries(data.players)
-                .filter(([id]) => id !== localPlayerId).length;
-            console.log(`[DEBUG] Remote players: ${remotePlayerCount}`);
-            
-            // Handle initial game state
             Object.entries(data.players).forEach(([id, player]: [string, any]) => {
-                console.log(`[DEBUG] Processing player ${id} from game state, is local: ${id === localPlayerId}`);
-                if (id !== localPlayerId && player.position) {
-                    console.log(`[DEBUG] Adding remote player from game state: ${id}, position:`, player.position);
-                    multiplayerManager.current?.addPlayer(id, player.position, true);
-                } else {
-                    console.log(`[DEBUG] Skipping local player ${id} or player without position`);
+                if (id !== gameClient.getPlayerId() && player.position) {
+                    multiplayerManager.current?.addPlayer(id, player.position);
                 }
             });
         });
@@ -162,7 +112,7 @@ const GameRenderer = ({
             window.gameRenderer = undefined;
             multiplayerManager.current?.clear();
         };
-    }, [gl, scene, gameClient, game, onTrailActivationUpdate]);
+    }, [gl, scene, gameClient]);
 
     useEffect(() => {
         if (game.getPlayer()) {
@@ -174,23 +124,23 @@ const GameRenderer = ({
     }, [game, camera]);
 
     useFrame((state, delta) => {
-        // Update camera controller
+        // Update camera
         if (cameraController.current) {
             cameraController.current.update(delta);
         }
         
-        // Get player position and trail points
+        // Get player state
         const playerPos = game.getPlayer()?.getPosition();
         const playerRotation = game.getPlayer()?.getRotation();
         const trails = game.getPlayer()?.getTrailPoints() || [];
         
         if (playerPos) {
-            // Update multiplayer manager's local player position for LOD calculations
+            // Update multiplayer manager's local player position
             if (multiplayerManager.current) {
                 multiplayerManager.current.setLocalPlayerPosition(playerPos);
             }
 
-            // Update local state with position and trail points
+            // Update local state
             onPositionUpdate(
                 playerPos, 
                 trails.map(point => ({ x: point.x, z: point.z }))
@@ -208,7 +158,7 @@ const GameRenderer = ({
                 });
             }
             
-            // Update enemy positions on minimap (throttled)
+            // Update enemy positions (throttled)
             if (now - lastEnemyUpdateTime.current > enemyUpdateInterval) {
                 lastEnemyUpdateTime.current = now;
                 if (multiplayerManager.current) {
@@ -337,7 +287,6 @@ export const GameScene = () => {
                                     onPositionUpdate={handlePositionUpdate}
                                     gameClient={gameClient.current}
                                     onEnemyPositionsUpdate={handleEnemyPositionsUpdate}
-                                    onTrailActivationUpdate={handleTrailActivation}
                                 />
                             )}
                         </Physics>

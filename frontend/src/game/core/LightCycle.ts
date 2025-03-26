@@ -822,4 +822,28 @@ export class LightCycle {
             }
         }
     }
+
+    setPosition(position: THREE.Vector3) {
+        if (!this.modelContainer) return;
+
+        // Update model container position
+        this.modelContainer.position.copy(position);
+        
+        // Update physics body position
+        this.body.position.copy(position as any);
+        this.body.velocity.setZero(); // Reset velocity to prevent drift
+        
+        // Update lights position
+        this.rearLight.position.copy(position)
+            .add(new THREE.Vector3(
+                -Math.sin(this.currentRotation) * 3,
+                1.0,
+                -Math.cos(this.currentRotation) * 3
+            ));
+        
+        // Update trail position
+        if (this.trailLight) {
+            this.trailLight.position.set(position.x, position.y + 0.5, position.z);
+        }
+    }
 } 
