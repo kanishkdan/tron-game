@@ -70,7 +70,7 @@ export class MultiplayerManager {
                 this.world,
                 () => console.log(`Remote player ${playerId} collision`),
                 undefined,
-                true // Use shared resources flag
+                true // Use shared resources flag to activate trails immediately
             );
             
             this.remotePlayers.set(playerId, cycle);
@@ -192,6 +192,9 @@ export class MultiplayerManager {
                 this.schedulePlayerRemoval(id);
                 return;
             }
+            
+            // Check for collisions with other players' trails
+            this.checkPlayerCollisions(player, id);
         });
         
         // Reset update accumulators
@@ -217,6 +220,54 @@ export class MultiplayerManager {
         }
     }
     
+    // Check if a player collides with any other player's trail
+    private checkPlayerCollisions(cycle: LightCycle, playerId: string) {
+        const position = cycle.getPosition();
+        
+        // Check against all other players' trails
+        this.remotePlayers.forEach((otherCycle, otherId) => {
+            // Skip checking against own trail
+            if (otherId === playerId) return;
+            
+            // Get the other player's trail points
+            const trailPoints = otherCycle.getTrailPoints();
+            if (trailPoints.length < 2) return;
+            
+            // Check each trail segment for collision
+            for (let i = 0; i < trailPoints.length - 1; i++) {
+                const point = trailPoints[i];
+                const nextPoint = trailPoints[i + 1];
+                
+                // Calculate distance from bike to trail segment
+                const distanceToSegment = this.pointToLineDistance(
+                    position,
+                    point,
+                    nextPoint
+                );
+                
+                if (distanceToSegment < 2) { // Collision threshold
+                    console.log(`Player ${playerId} collided with ${otherId}'s trail`);
+                    this.schedulePlayerRemoval(playerId);
+                    return;
+                }
+            }
+        });
+    }
+    
+    // Helper method to calculate point to line segment distance
+    private pointToLineDistance(point: THREE.Vector3, lineStart: THREE.Vector3, lineEnd: THREE.Vector3): number {
+        const line = new THREE.Vector3().subVectors(lineEnd, lineStart);
+        const len = line.length();
+        if (len === 0) return point.distanceTo(lineStart);
+
+        // Project point onto line
+        const t = Math.max(0, Math.min(1, point.clone().sub(lineStart).dot(line) / (len * len)));
+        const projection = lineStart.clone().add(line.multiplyScalar(t));
+        
+        // Return distance to projection point
+        return point.distanceTo(projection);
+    }
+
     // Remove LOD-based updates since we're keeping everything in high detail
     private updatePlayerLODs() {
         this.remotePlayers.forEach((player, id) => {
@@ -230,6 +281,11 @@ export class MultiplayerManager {
             id,
             position: pos
         }));
+    }
+
+    // Add method to expose remote players for collision detection
+    getRemotePlayers(): Map<string, LightCycle> {
+        return this.remotePlayers;
     }
 
     clear() {

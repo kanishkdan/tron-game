@@ -3,6 +3,7 @@ import * as CANNON from 'cannon-es';
 import { Arena } from './Arena';
 import { LightCycle } from './LightCycle';
 import { PerformanceManager } from './PerformanceManager';
+import { MultiplayerManager } from './MultiplayerManager';
 
 // Event for trail activation countdown
 export type TrailActivationEvent = {
@@ -22,6 +23,7 @@ export class TronGame {
     private readonly SIZE_MULTIPLIER = 5; // Match the multiplier from LightCycle.ts
     private readonly ARENA_SIZE = 500 * this.SIZE_MULTIPLIER;
     private onTrailActivationUpdate?: (event: TrailActivationEvent) => void;
+    private multiplayerManager: MultiplayerManager | null = null;
 
     constructor(
         scene: THREE.Scene, 
@@ -174,25 +176,78 @@ export class TronGame {
             return;
         }
 
-        // Check collisions with other players' light trails
+        // First check collisions with local players' light trails
         for (const [name, otherCycle] of this.players) {
+            // Skip collision check with own trail
             if (otherCycle === cycle) continue;
 
-            // Get other cycle's trail segments - only do this once per cycle
+            // Get other cycle's trail segments
             const trailSegments = otherCycle.getLightTrail();
             if (trailSegments.length === 0) continue;
             
-            for (const segment of trailSegments) {
-                // Simple collision check with trail segments
-                const segmentPos = segment.position;
-                const distance = position.distanceTo(segmentPos);
+            // Get trail points for more precise collision detection
+            const trailPoints = otherCycle.getTrailPoints();
+            
+            // Check each trail point for collision
+            for (let i = 0; i < trailPoints.length - 1; i++) {
+                const point = trailPoints[i];
+                const nextPoint = trailPoints[i + 1];
                 
-                if (distance < 2) { // Collision threshold
+                // Calculate distance from bike to trail segment
+                const distanceToSegment = this.pointToLineDistance(
+                    position,
+                    point,
+                    nextPoint
+                );
+                
+                if (distanceToSegment < 2) { // Collision threshold
                     this.handleCollision(cycle);
                     return;
                 }
             }
         }
+        
+        // Then check collisions with remote players' trails if MultiplayerManager is available
+        if (this.multiplayerManager) {
+            const remotePlayers = this.multiplayerManager.getRemotePlayers();
+            for (const [id, remoteCycle] of remotePlayers) {
+                // Get remote cycle's trail points
+                const trailPoints = remoteCycle.getTrailPoints();
+                if (trailPoints.length < 2) continue;
+                
+                // Check each trail segment for collision
+                for (let i = 0; i < trailPoints.length - 1; i++) {
+                    const point = trailPoints[i];
+                    const nextPoint = trailPoints[i + 1];
+                    
+                    // Calculate distance from bike to trail segment
+                    const distanceToSegment = this.pointToLineDistance(
+                        position,
+                        point,
+                        nextPoint
+                    );
+                    
+                    if (distanceToSegment < 2) { // Same collision threshold
+                        this.handleCollision(cycle);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    // Helper method to calculate point to line segment distance
+    private pointToLineDistance(point: THREE.Vector3, lineStart: THREE.Vector3, lineEnd: THREE.Vector3): number {
+        const line = new THREE.Vector3().subVectors(lineEnd, lineStart);
+        const len = line.length();
+        if (len === 0) return point.distanceTo(lineStart);
+
+        // Project point onto line
+        const t = Math.max(0, Math.min(1, point.clone().sub(lineStart).dot(line) / (len * len)));
+        const projection = lineStart.clone().add(line.multiplyScalar(t));
+        
+        // Return distance to projection point
+        return point.distanceTo(projection);
     }
 
     private handleCollision(cycle: LightCycle) {
@@ -304,5 +359,10 @@ export class TronGame {
         };
         
         animate();
+    }
+
+    // Add method to set the multiplayer manager
+    setMultiplayerManager(manager: MultiplayerManager): void {
+        this.multiplayerManager = manager;
     }
 } 

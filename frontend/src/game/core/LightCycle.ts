@@ -78,13 +78,13 @@ export class LightCycle {
     // New properties for trail activation cooldown
     private readonly TRAIL_ACTIVATION_DELAY = 5000; // 5 seconds in milliseconds
     private creationTime: number = 0;
-    private trailsActive: boolean = false;
+    private trailsActive: boolean;
     private trailActivationCallback?: (secondsRemaining: number) => void;
     // LOD for trail segments to improve performance
     private trailUpdateCounter: number = 0;
     private readonly TRAIL_UPDATE_INTERVAL = 2; // Only update every X frames
     private currentLODLevel: number = LOD_HIGH;
-    private useSharedResources: boolean = false;
+    private useSharedResources: boolean;
 
     private keydownHandler: (event: KeyboardEvent) => void = () => {};
     private keyupHandler: (event: KeyboardEvent) => void = () => {};
@@ -179,8 +179,9 @@ export class LightCycle {
         this.bikeLight = new THREE.PointLight(this.bikeColor.hex, 1.5, 20);
         scene.add(this.bikeLight);
 
-        // Initialize trail system with bike color - activate trails immediately for remote players
-        this.trailsActive = true; // Always active for remote players
+        // Initialize trail system with bike color
+        // Remote players have immediate trails, local player has delayed trails
+        this.trailsActive = useSharedResources; // Immediate trails for remote players, delayed for local
         this.initLightTrail();
 
         // Create physics body with reduced height
@@ -349,7 +350,12 @@ export class LightCycle {
         // Then update visual elements
         this.updateVisuals();
         
-        // Always update trails for remote players
+        // Check if trails should be activated (only for local player)
+        if (!this.useSharedResources && !this.trailsActive) {
+            this.checkTrailActivation(currentTime);
+        }
+        
+        // Update trail only if active
         if (this.trailsActive && !skipTrails) {
             this.trailUpdateCounter++;
             if (this.trailUpdateCounter >= this.TRAIL_UPDATE_INTERVAL) {
