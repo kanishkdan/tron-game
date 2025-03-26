@@ -102,11 +102,31 @@ export class MultiplayerManager {
         
         if (rotation !== undefined) {
             this.remoteRotations.set(playerId, rotation);
+            
+            // Force update the cycle's rotation
+            // This ensures the model visually rotates correctly
+            const tmpBody = cycle.getBody();
+            if (tmpBody) {
+                const forward = new THREE.Vector3(
+                    Math.sin(rotation),
+                    0,
+                    Math.cos(rotation)
+                );
+                tmpBody.velocity.x = forward.x * cycle.getCurrentSpeed();
+                tmpBody.velocity.z = forward.z * cycle.getCurrentSpeed();
+            }
         }
     }
 
     update(deltaTime: number) {
         this.updateAccumulator += deltaTime;
+        
+        // Update each remote player's LightCycle instance every frame
+        this.remotePlayers.forEach((player, id) => {
+            if (id === this.localPlayerId) return;
+            // Call the LightCycle's update method to handle trails and animations
+            player.update(deltaTime);
+        });
         
         if (this.updateAccumulator >= UPDATE_FREQUENCY) {
             this.updateAccumulator = 0;

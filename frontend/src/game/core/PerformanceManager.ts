@@ -17,7 +17,7 @@ export class PerformanceManager {
     private isEnabled = true;
     private lastResolutionChangeTime = 0;
     private readonly MIN_CHANGE_INTERVAL = 2000; // Minimum 2 seconds between resolution changes
-    private readonly TARGET_MIN_FPS = 45; // Never go below this FPS
+    private readonly TARGET_MIN_FPS = 60; // Never go below this FPS
 
     private constructor() {
         // Initialize resolution based on device size
