@@ -17,7 +17,7 @@ export class LightCycle {
     private modelContainer!: THREE.Group; // New container to adjust model position
     private body: CANNON.Body;
     private readonly SIZE_MULTIPLIER = 5; // Standardized multiplier across all components
-    private readonly MAX_SPEED = 30 * this.SIZE_MULTIPLIER;
+    private readonly MAX_SPEED = 20 * this.SIZE_MULTIPLIER;
     private readonly MIN_SPEED = 10 * this.SIZE_MULTIPLIER;
     private readonly ACCELERATION = 15 * this.SIZE_MULTIPLIER;
     private readonly DECELERATION = 10 * this.SIZE_MULTIPLIER;
@@ -36,7 +36,7 @@ export class LightCycle {
     private trailLine: THREE.Mesh | null = null;
     private trailGeometry: THREE.BufferGeometry | null = null;
     private trailMaterial: THREE.MeshBasicMaterial | null = null;
-    private readonly MAX_TRAIL_LENGTH = 182;
+    private readonly MAX_TRAIL_LENGTH = 82;
     private scene: THREE.Scene;
     private rearLight: THREE.PointLight;
     private initialScale = new THREE.Vector3(3.0, 2.5, 2.5);
@@ -423,7 +423,7 @@ export class LightCycle {
                     this.lastTrailPoint.x, 
                     0, 
                     this.lastTrailPoint.z
-                )) > 0.5; // Slightly increased minimum distance for fewer points
+                )) > 5.0; // Slightly increased minimum distance for fewer points
         
         if (shouldAddPoint) {
             // Create the new point at the bike's current height
