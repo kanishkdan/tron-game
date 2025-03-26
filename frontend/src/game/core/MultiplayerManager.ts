@@ -21,6 +21,7 @@ export class MultiplayerManager {
     private scene: THREE.Scene;
     private world: CANNON.World;
     private localPlayerId: string | null = null;
+    private localPlayerName: string | null = null;
     private localPlayerPosition: THREE.Vector3 = new THREE.Vector3();
     private updateAccumulator: number = 0;
     private physicsAccumulator: number = 0;
@@ -28,6 +29,7 @@ export class MultiplayerManager {
     private resourcesInitialized: boolean = false;
     private pendingRemovals: string[] = [];
     private removalTimer: number = 0;
+    private playerNames: Map<string, string> = new Map();
 
     constructor(scene: THREE.Scene, world: CANNON.World) {
         this.scene = scene;
@@ -44,21 +46,30 @@ export class MultiplayerManager {
         }
     }
 
-    setLocalPlayerId(playerId: string) {
+    setLocalPlayerId(playerId: string, playerName: string) {
         this.localPlayerId = playerId;
+        this.localPlayerName = playerName;
+        this.playerNames.set(playerId, playerName);
     }
 
     setLocalPlayerPosition(position: THREE.Vector3) {
         this.localPlayerPosition.copy(position);
     }
 
-    addPlayer(playerId: string, position?: { x: number; y: number; z: number }) {
+    getPlayerName(playerId: string): string {
+        return this.playerNames.get(playerId) || playerId;
+    }
+
+    addPlayer(playerId: string, position?: { x: number; y: number; z: number }, playerName?: string) {
         console.log(`Adding remote player: ${playerId}`);
         
         if (playerId === this.localPlayerId) {
             console.log("Skipping local player");
             return;
         }
+
+        // Store player name
+        this.playerNames.set(playerId, playerName || playerId);
 
         // Remove any existing instance first (with gradual cleanup)
         this.schedulePlayerRemoval(playerId);
@@ -125,6 +136,12 @@ export class MultiplayerManager {
             this.remoteRotations.delete(playerId);
             this.enemyPositions.delete(playerId);
             this.remoteLODLevels.delete(playerId);
+            
+            // Remove from pending removals if it was scheduled
+            const pendingIndex = this.pendingRemovals.indexOf(playerId);
+            if (pendingIndex !== -1) {
+                this.pendingRemovals.splice(pendingIndex, 1);
+            }
         }
     }
 

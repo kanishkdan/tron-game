@@ -13,6 +13,7 @@ import { GameClient } from '../network/gameClient';
 import { MultiplayerManager } from './core/MultiplayerManager';
 import { TrailActivationDisplay } from '../components/TrailActivationDisplay';
 import { PerformanceDisplay } from '../components/PerformanceDisplay';
+import { KillFeed } from '../components/KillFeed';
 
 // Lighting component to handle all scene lighting
 const SceneLighting = () => {
@@ -89,12 +90,24 @@ const GameRenderer = ({
         // Set up WebSocket event handlers
         gameClient.on('player_joined', (data) => {
             console.log('Player joined:', data.player_id);
-            multiplayerManager.current?.addPlayer(data.player_id);
+            multiplayerManager.current?.addPlayer(data.player_id, undefined, data.player_name);
         });
 
         gameClient.on('player_left', (data) => {
             console.log('Player left:', data.player_id);
             multiplayerManager.current?.removePlayer(data.player_id);
+            // Also remove from game if it exists there
+            if (game.current) {
+                const players = game.current.getPlayers();
+                if (players.has(data.player_id)) {
+                    const cycle = players.get(data.player_id);
+                    if (cycle) {
+                        cycle.cleanupTrails();
+                        cycle.dispose();
+                    }
+                    players.delete(data.player_id);
+                }
+            }
         });
 
         gameClient.on('player_moved', (data) => {
@@ -190,6 +203,7 @@ export const GameScene = () => {
     const [enemyPositions, setEnemyPositions] = useState<{id: string, position: {x: number, z: number}}[]>([]);
     const [arenaSize, setArenaSize] = useState(500);
     const [trailActivationEvents, setTrailActivationEvents] = useState<Map<string, number>>(new Map());
+    const [killMessages, setKillMessages] = useState<Array<{ killer: string; victim: string; timestamp: number }>>([]);
     const scene = useRef<THREE.Scene>();
     const game = useRef<TronGame>();
     const gameClient = useRef<GameClient>();
@@ -233,14 +247,15 @@ export const GameScene = () => {
                 game.current = new TronGame(
                     scene.current, 
                     physicsWorld,
-                    handleTrailActivation
+                    handleTrailActivation,
+                    handleKill
                 );
                 
                 game.current.start(name);
                 
                 // Create and link multiplayer manager
                 const mpManager = new MultiplayerManager(scene.current, physicsWorld);
-                mpManager.setLocalPlayerId(gameClient.current.getPlayerId() || '');
+                mpManager.setLocalPlayerId(gameClient.current.getPlayerId() || '', name);
                 game.current.setMultiplayerManager(mpManager);
                 multiplayerManager.current = mpManager;
                 
@@ -261,6 +276,21 @@ export const GameScene = () => {
     
     const handleEnemyPositionsUpdate = (enemies: {id: string, position: {x: number, z: number}}[]) => {
         setEnemyPositions(enemies);
+    };
+
+    // Handle kill events
+    const handleKill = (killer: string, victim: string) => {
+        setKillMessages(prev => {
+            // Add new message
+            const newMessages = [...prev, { killer, victim, timestamp: Date.now() }];
+            // Keep only last 5 messages
+            return newMessages.slice(-5);
+        });
+
+        // Remove old messages after 5 seconds
+        setTimeout(() => {
+            setKillMessages(prev => prev.filter(msg => Date.now() - msg.timestamp < 5000));
+        }, 5000);
     };
 
     useEffect(() => {
@@ -315,6 +345,7 @@ export const GameScene = () => {
                         enemyPositions={enemyPositions}
                     />
                     <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />
+                    <KillFeed messages={killMessages} />
                 </>
             )}
         </>

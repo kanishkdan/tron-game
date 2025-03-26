@@ -24,15 +24,18 @@ export class TronGame {
     private readonly ARENA_SIZE = 500 * this.SIZE_MULTIPLIER;
     private onTrailActivationUpdate?: (event: TrailActivationEvent) => void;
     private multiplayerManager: MultiplayerManager | null = null;
+    private onKill?: (killerName: string, victimName: string) => void;
 
     constructor(
         scene: THREE.Scene, 
         world: CANNON.World,
-        onTrailActivationUpdate?: (event: TrailActivationEvent) => void
+        onTrailActivationUpdate?: (event: TrailActivationEvent) => void,
+        onKill?: (killerName: string, victimName: string) => void
     ) {
         this.scene = scene;
         this.world = world;
         this.onTrailActivationUpdate = onTrailActivationUpdate;
+        this.onKill = onKill;
 
         // Initialize performance manager
         PerformanceManager.getInstance();
@@ -54,7 +57,7 @@ export class TronGame {
             this.scene,
             startPosition,
             this.world,
-            () => this.handleCollision(playerCycle),
+            () => this.handleCollision(playerCycle, "Arena"),
             (secondsRemaining) => {
                 if (this.onTrailActivationUpdate) {
                     this.onTrailActivationUpdate({
@@ -104,7 +107,7 @@ export class TronGame {
                     this.scene,
                     startPos,
                     this.world,
-                    () => this.handleCollision(remoteCycle),
+                    () => this.handleCollision(remoteCycle, playerId),
                     (secondsRemaining) => {
                         if (this.onTrailActivationUpdate) {
                             this.onTrailActivationUpdate({
@@ -131,6 +134,10 @@ export class TronGame {
 
     getPlayer(): LightCycle | null {
         return this.currentPlayer;
+    }
+
+    getPlayers(): Map<string, LightCycle> {
+        return this.players;
     }
 
     getArenaSize(): number {
@@ -172,7 +179,7 @@ export class TronGame {
         if (Math.abs(position.x) > this.ARENA_SIZE/2 - 10 || 
             Math.abs(position.z) > this.ARENA_SIZE/2 - 10 || 
             position.y < -10) {
-            this.handleCollision(cycle);
+            this.handleCollision(cycle, "Arena");
             return;
         }
 
@@ -201,7 +208,7 @@ export class TronGame {
                 );
                 
                 if (distanceToSegment < 2) { // Collision threshold
-                    this.handleCollision(cycle);
+                    this.handleCollision(cycle, name);
                     return;
                 }
             }
@@ -228,7 +235,7 @@ export class TronGame {
                     );
                     
                     if (distanceToSegment < 3) { // Increased collision threshold for remote trails
-                        this.handleCollision(cycle);
+                        this.handleCollision(cycle, id);
                         return;
                     }
                 }
@@ -250,7 +257,7 @@ export class TronGame {
         return point.distanceTo(projection);
     }
 
-    private handleCollision(cycle: LightCycle) {
+    private handleCollision(cycle: LightCycle, killerName: string) {
         // Create explosion effect
         this.createExplosion(cycle.getPosition());
 
@@ -259,8 +266,11 @@ export class TronGame {
         
         // Find and remove player
         let isCurrentPlayer = false;
+        let playerId: string | null = null;
+        
         for (const [name, playerCycle] of this.players) {
             if (playerCycle === cycle) {
+                playerId = name;
                 this.players.delete(name);
                 // Check if this is the current player
                 if (cycle === this.currentPlayer) {
@@ -268,6 +278,23 @@ export class TronGame {
                 }
                 break;
             }
+        }
+        
+        // Notify about the kill
+        if (playerId && this.onKill && this.multiplayerManager) {
+            if (killerName === "Arena") {
+                this.onKill("Arena", this.multiplayerManager.getPlayerName(playerId));
+            } else {
+                this.onKill(
+                    this.multiplayerManager.getPlayerName(killerName),
+                    this.multiplayerManager.getPlayerName(playerId)
+                );
+            }
+        }
+        
+        // Notify MultiplayerManager to remove the crashed player
+        if (playerId && this.multiplayerManager) {
+            this.multiplayerManager.removePlayer(playerId);
         }
         
         // If this was the current player, restart game after a delay
