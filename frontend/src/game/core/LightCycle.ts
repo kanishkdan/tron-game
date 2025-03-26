@@ -36,7 +36,7 @@ export class LightCycle {
     private trailLine: THREE.Mesh | null = null;
     private trailGeometry: THREE.BufferGeometry | null = null;
     private trailMaterial: THREE.MeshBasicMaterial | null = null;
-    private readonly MAX_TRAIL_LENGTH = 82;
+    private readonly MAX_TRAIL_LENGTH = 10;
     private scene: THREE.Scene;
     private rearLight: THREE.PointLight;
     private initialScale = new THREE.Vector3(3.0, 2.5, 2.5);
@@ -557,6 +557,14 @@ export class LightCycle {
 
     getRotation(): number {
         return this.currentRotation;
+    }
+
+    setRotation(rotation: number) {
+        this.currentRotation = rotation;
+        this.targetRotation = rotation;
+        if (this.modelContainer) {
+            this.modelContainer.rotation.y = rotation;
+        }
     }
     
     getCurrentSpeed(): number {

@@ -103,10 +103,13 @@ export class MultiplayerManager {
         if (rotation !== undefined) {
             this.remoteRotations.set(playerId, rotation);
             
-            // Force update the cycle's rotation
-            // This ensures the model visually rotates correctly
+            // Update the cycle's rotation and physics body
             const tmpBody = cycle.getBody();
             if (tmpBody) {
+                // Set the visual rotation directly
+                cycle.setRotation(rotation);
+                
+                // Update physics body velocity based on rotation
                 const forward = new THREE.Vector3(
                     Math.sin(rotation),
                     0,
