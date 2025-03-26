@@ -89,37 +89,71 @@ const GameRenderer = ({
         // Connect multiplayer manager with game instance
         if (game) {
             multiplayerManager.current.setGameInstance(game);
+            console.log('[DEBUG] Connected MultiplierManager to TronGame instance');
+        } else {
+            console.error('[DEBUG] No game instance available when setting up MultiplayerManager');
         }
         
         // Set local player ID
         multiplayerManager.current.setLocalPlayerId(gameClient.getPlayerId() || '');
+        console.log(`[DEBUG] Set local player ID: ${gameClient.getPlayerId()}`);
 
         // Set up WebSocket event handlers
         gameClient.on('player_joined', (data) => {
-            console.log('Player joined:', data.player_id);
-            multiplayerManager.current?.addPlayer(data.player_id);
+            console.log('[DEBUG] Player joined event:', data);
+            if (multiplayerManager.current) {
+                multiplayerManager.current.addPlayer(data.player_id);
+            } else {
+                console.error('[DEBUG] MultiplayerManager not available during player_joined event');
+            }
         });
 
         gameClient.on('player_left', (data) => {
-            console.log('Player left:', data.player_id);
+            console.log('[DEBUG] Player left event:', data);
             multiplayerManager.current?.removePlayer(data.player_id);
         });
 
         gameClient.on('player_moved', (data) => {
+            console.log('[DEBUG] Player moved event received:', data);
+            // Verify we have position and rotation data
+            if (!data.position) {
+                console.error('[DEBUG] Missing position data in player_moved event');
+                return;
+            }
+            
+            // Pass the proper rotation value to updatePlayerPosition
+            const rotation = data.position.rotation !== undefined 
+                ? data.position.rotation 
+                : undefined;
+                
+            console.log(`[DEBUG] Updating player ${data.player_id} position:`, 
+                data.position, 'rotation:', rotation);
+                
             multiplayerManager.current?.updatePlayerPosition(
                 data.player_id, 
                 data.position,
-                data.position.rotation
+                rotation
             );
         });
 
         gameClient.on('game_state', (data) => {
-            console.log('Received game state:', data);
+            const localPlayerId = gameClient.getPlayerId();
+            console.log('[DEBUG] Game state received:', data);
+            console.log(`[DEBUG] Local player ID: ${localPlayerId}`);
+            console.log('[DEBUG] All players in game state:', Object.keys(data.players));
+            
+            const remotePlayerCount = Object.entries(data.players)
+                .filter(([id]) => id !== localPlayerId).length;
+            console.log(`[DEBUG] Remote players: ${remotePlayerCount}`);
+            
             // Handle initial game state
             Object.entries(data.players).forEach(([id, player]: [string, any]) => {
-                if (id !== gameClient.getPlayerId() && player.position) {
-                    console.log('Adding remote player from game state:', id);
-                    multiplayerManager.current?.addPlayer(id, player.position);
+                console.log(`[DEBUG] Processing player ${id} from game state, is local: ${id === localPlayerId}`);
+                if (id !== localPlayerId && player.position) {
+                    console.log(`[DEBUG] Adding remote player from game state: ${id}, position:`, player.position);
+                    multiplayerManager.current?.addPlayer(id, player.position, true);
+                } else {
+                    console.log(`[DEBUG] Skipping local player ${id} or player without position`);
                 }
             });
         });

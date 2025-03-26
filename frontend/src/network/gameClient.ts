@@ -34,6 +34,7 @@ export class GameClient {
   private reconnectTimeout: number = 1000; // Start with 1 second
   private sessionStorageKey = 'tron_game_player_session';
   private serverUrl: string;
+  private lastConnectTime: number = 0;
 
   constructor(serverUrl?: string) {
     // Use provided server URL, environment variable, or fallback to local development
@@ -57,6 +58,14 @@ export class GameClient {
   }
 
   connect(playerName: string): Promise<void> {
+    console.log(`[DEBUG] GameClient.connect called for player ${playerName}`);
+    
+    // Check if already connected
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      console.log(`[DEBUG] Already connected with ID ${this.playerId}, reusing connection`);
+      return Promise.resolve();
+    }
+    
     return new Promise((resolve, reject) => {
       try {
         // Check for existing player ID in session storage
@@ -68,14 +77,15 @@ export class GameClient {
         // Store the player ID for future sessions
         localStorage.setItem(this.sessionStorageKey, this.playerId);
         
-        console.log(`Connecting with player ID: ${this.playerId}`);
+        console.log(`[DEBUG] Connecting with player ID: ${this.playerId}, stored ID was: ${storedPlayerId || 'none'}`);
         
         this.socket = new WebSocket(`${this.serverUrl}/ws/${this.playerId}`);
 
         this.socket.onopen = () => {
-          console.log('WebSocket connected');
+          console.log('[DEBUG] WebSocket connection established successfully');
           this.reconnectAttempts = 0;
           this.reconnectTimeout = 1000;
+          this.lastConnectTime = performance.now();
           resolve();
         };
 
@@ -114,8 +124,17 @@ export class GameClient {
   }
 
   private handleDisconnect() {
+    console.log(`[DEBUG] Handling disconnect for player ${this.playerId}, attempts: ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+    
+    // If disconnected very quickly after connection, there might be an issue with the server
+    const timeSinceConnect = performance.now() - this.lastConnectTime;
+    if (timeSinceConnect < 2000) {
+      console.log(`[DEBUG] Disconnected shortly after connecting (${Math.round(timeSinceConnect)}ms). Waiting longer before reconnect.`);
+      this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, 10000);
+    }
+    
     if (this.reconnectAttempts < this.maxReconnectAttempts && this.playerId) {
-      console.log(`Attempting to reconnect (${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})...`);
+      console.log(`[DEBUG] Attempting to reconnect (${this.reconnectAttempts + 1}/${this.maxReconnectAttempts}) in ${this.reconnectTimeout}ms...`);
       setTimeout(() => {
         this.reconnectAttempts++;
         const playerName = this.playerId?.split('-')[0];
@@ -126,6 +145,8 @@ export class GameClient {
           });
         }
       }, this.reconnectTimeout);
+    } else {
+      console.log(`[DEBUG] Maximum reconnect attempts reached or no player ID. Giving up.`);
     }
   }
 

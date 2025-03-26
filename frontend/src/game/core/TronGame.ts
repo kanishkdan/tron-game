@@ -74,9 +74,11 @@ export class TronGame {
     // Add a method to add remote players with delayed trail activation
     addRemotePlayer(playerId: string, position?: THREE.Vector3): LightCycle | null {
         try {
+            console.log(`[DEBUG] TronGame.addRemotePlayer called for ${playerId}, position:`, position);
+            
             // Ensure playerId is valid
             if (!playerId || this.players.has(playerId)) {
-                console.warn(`Player ${playerId} already exists or invalid ID`);
+                console.warn(`[DEBUG] Player ${playerId} already exists in TronGame.players map or has invalid ID`);
                 return null;
             }
             
@@ -92,28 +94,35 @@ export class TronGame {
             startPos.x = Math.min(Math.max(startPos.x, -boundary), boundary);
             startPos.z = Math.min(Math.max(startPos.z, -boundary), boundary);
             
-            // Create new light cycle with collision and trail callbacks
-            const remoteCycle = new LightCycle(
-                this.scene,
-                startPos,
-                this.world,
-                () => this.handleCollision(remoteCycle),
-                (secondsRemaining) => {
-                    if (this.onTrailActivationUpdate) {
-                        this.onTrailActivationUpdate({
-                            playerId,
-                            secondsRemaining
-                        });
-                    }
-                }
-            );
+            console.log(`[DEBUG] Creating LightCycle for ${playerId} at position:`, startPos);
             
-            // Add to players map
-            this.players.set(playerId, remoteCycle);
-            console.log(`Added remote player: ${playerId} at position ${startPos.x}, ${startPos.y}, ${startPos.z}`);
-            return remoteCycle;
+            try {
+                // Create new light cycle with collision and trail callbacks
+                const remoteCycle = new LightCycle(
+                    this.scene,
+                    startPos,
+                    this.world,
+                    () => this.handleCollision(remoteCycle),
+                    (secondsRemaining) => {
+                        if (this.onTrailActivationUpdate) {
+                            this.onTrailActivationUpdate({
+                                playerId,
+                                secondsRemaining
+                            });
+                        }
+                    }
+                );
+                
+                // Add to players map
+                this.players.set(playerId, remoteCycle);
+                console.log(`[DEBUG] Successfully added remote player: ${playerId} at position ${startPos.x}, ${startPos.y}, ${startPos.z}`);
+                return remoteCycle;
+            } catch (cycleError) {
+                console.error(`[DEBUG] Error creating LightCycle for ${playerId}:`, cycleError);
+                return null;
+            }
         } catch (error) {
-            console.error(`Error adding remote player ${playerId}:`, error);
+            console.error(`[DEBUG] Outer error in addRemotePlayer for ${playerId}:`, error);
             return null;
         }
     }

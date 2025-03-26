@@ -11,7 +11,7 @@ const ROTATION_LERP_FACTOR = 0.3; // Quicker rotation updates
 const MAX_VISIBLE_DISTANCE = 300; // Only show players within this distance
 const MAX_PLAYERS_WITH_PHYSICS = 10; // Maximum number of players with full physics
 const MAX_PLAYERS_TOTAL = 16; // Hard limit on total players
-const JOIN_THROTTLE_TIME = 500; // Minimum ms between player joins
+const JOIN_THROTTLE_TIME = 100; // Reduced from 500ms to 100ms - Minimum ms between player joins
 
 export class MultiplayerManager {
     private remotePlayers: Map<string, LightCycle> = new Map();
@@ -58,8 +58,8 @@ export class MultiplayerManager {
         this.game = game;
     }
 
-    addPlayer(playerId: string, position?: { x: number; y: number; z: number }) {
-        console.log(`Adding remote player: ${playerId}`);
+    addPlayer(playerId: string, position?: { x: number; y: number; z: number }, isFromGameState: boolean = false) {
+        console.log(`Adding remote player: ${playerId}${isFromGameState ? ' (from game state)' : ''}`);
         
         // Don't add the local player twice
         if (playerId === this.localPlayerId) {
@@ -73,41 +73,56 @@ export class MultiplayerManager {
             return;
         }
 
-        // Throttle player joins to prevent multiple players from joining at the same time
+        // Check if player already exists - no need to add again
+        if (this.remotePlayers.has(playerId)) {
+            console.log(`Player ${playerId} already exists, updating position instead`);
+            if (position) {
+                this.updatePlayerPosition(playerId, position);
+            }
+            return;
+        }
+
+        // If player is already in pending joins, just update the position data
+        // This avoids scheduling multiple join attempts for the same player
+        if (this.pendingJoins.has(playerId)) {
+            console.log(`Player ${playerId} is already in pending joins queue, updating position`);
+            const existing = this.pendingJoins.get(playerId);
+            if (existing) {
+                // Only update position, don't increment attempts
+                this.pendingJoins.set(playerId, {
+                    position: position || existing.position,
+                    attempts: existing.attempts
+                });
+            }
+            return;
+        }
+
+        // Skip throttling for server-reported players (from game state) to ensure they appear immediately
         const now = performance.now();
-        if (now - this.lastPlayerJoinTime < JOIN_THROTTLE_TIME) {
+        if (!isFromGameState && now - this.lastPlayerJoinTime < JOIN_THROTTLE_TIME) {
             // Queue this player join for later
             console.log(`Throttling join for player ${playerId}, will retry soon`);
             
-            // Store in pending joins with position
-            const existing = this.pendingJoins.get(playerId);
+            // Add to pending joins with position
             this.pendingJoins.set(playerId, {
                 position,
-                attempts: existing ? existing.attempts + 1 : 1
+                attempts: 1
             });
             
             // Schedule retry with exponential backoff
-            const attempts = this.pendingJoins.get(playerId)?.attempts || 1;
-            if (attempts <= this.MAX_JOIN_ATTEMPTS) {
-                setTimeout(() => {
-                    const pendingJoin = this.pendingJoins.get(playerId);
-                    if (pendingJoin) {
-                        this.pendingJoins.delete(playerId);
-                        this.addPlayer(playerId, pendingJoin.position);
-                    }
-                }, JOIN_THROTTLE_TIME * Math.pow(2, attempts - 1));
-            } else {
-                console.warn(`Failed to add player ${playerId} after ${attempts} attempts`);
-                this.pendingJoins.delete(playerId);
-            }
+            setTimeout(() => {
+                const pendingJoin = this.pendingJoins.get(playerId);
+                if (pendingJoin) {
+                    this.pendingJoins.delete(playerId);
+                    this.addPlayer(playerId, pendingJoin.position);
+                }
+            }, JOIN_THROTTLE_TIME);
+            
             return;
         }
         
         // Remember the time of this join to throttle future joins
         this.lastPlayerJoinTime = now;
-
-        // Remove any existing instance first
-        this.removePlayer(playerId);
 
         try {
             // Convert position to THREE.Vector3 if provided
@@ -119,11 +134,14 @@ export class MultiplayerManager {
                     position.y || 0.5, 
                     position.z || 0
                 );
-                pos = this.tempVector;
+                // Clone the vector to avoid issues with the temp vector being reused
+                pos = this.tempVector.clone();
+                console.log(`[DEBUG] Creating position vector for ${playerId}:`, pos);
             }
             
             // Use the game instance to create players if available (preferred approach)
             if (this.game) {
+                console.log(`[DEBUG] Calling game.addRemotePlayer for ${playerId}`);
                 const cycle = this.game.addRemotePlayer(playerId, pos);
                 
                 // Handle case where cycle creation failed
@@ -134,6 +152,7 @@ export class MultiplayerManager {
                 
                 // Store the player
                 this.remotePlayers.set(playerId, cycle);
+                console.log(`[DEBUG] Successfully created and stored remote player ${playerId}. Current players: ${this.remotePlayers.size}`);
                 
                 // Set initial position for tracking
                 if (position) {
@@ -192,6 +211,19 @@ export class MultiplayerManager {
         }
         
         try {
+            // Check if this player is in the pending joins queue
+            if (this.pendingJoins.has(playerId)) {
+                // Just update the position in the pending queue
+                const existing = this.pendingJoins.get(playerId);
+                if (existing) {
+                    this.pendingJoins.set(playerId, {
+                        position,
+                        attempts: existing.attempts
+                    });
+                }
+                return;
+            }
+            
             // Create the player if they don't exist
             if (!this.remotePlayers.has(playerId)) {
                 this.addPlayer(playerId, position);
@@ -257,7 +289,14 @@ export class MultiplayerManager {
                 const data = this.pendingJoins.get(firstPlayerId);
                 this.pendingJoins.delete(firstPlayerId);
                 if (data) {
-                    this.addPlayer(firstPlayerId, data.position);
+                    // Only add player if not already in the game
+                    if (!this.remotePlayers.has(firstPlayerId)) {
+                        this.addPlayer(firstPlayerId, data.position);
+                    } else if (data.position) {
+                        // If player already exists but we have a position update, apply it
+                        // This handles the case where a player was added after the pending join was created
+                        this.updatePlayerPosition(firstPlayerId, data.position);
+                    }
                 }
             }
         }
