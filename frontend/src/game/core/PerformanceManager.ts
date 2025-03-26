@@ -9,15 +9,15 @@ export class PerformanceManager {
     private lastFpsTime = 0;
     private frameCount = 0;
     private currentFps = 60;
-    private targetFps = 60;
+    private targetFps = 50;
     private resolutionScale = 1.0;
     private readonly MIN_RESOLUTION_SCALE = 0.3;
     private fpsHistory: number[] = [];
-    private readonly FPS_HISTORY_SIZE = 20; // Increase history size for more stability
+    private readonly FPS_HISTORY_SIZE = 20;
     private isEnabled = true;
     private lastResolutionChangeTime = 0;
-    private readonly MIN_CHANGE_INTERVAL = 2000; // Minimum 2 seconds between resolution changes
-    private readonly TARGET_MIN_FPS = 60; // Never go below this FPS
+    private readonly MIN_CHANGE_INTERVAL = 5000;
+    private isOptimalState = false; // Track if we've achieved optimal state (50+ FPS at 100% resolution)
 
     private constructor() {
         // Initialize resolution based on device size
@@ -49,7 +49,7 @@ export class PerformanceManager {
         const isLowEndDevice = isMobile || window.innerWidth < 768;
         
         // Start at 75% for big devices, 30% for small/mid/low tier
-        this.resolutionScale = isLowEndDevice ? 0.3 : 0.75;
+        this.resolutionScale = isLowEndDevice ? 0.3 : 0.90;
         
         console.log(`Initializing resolution scale at ${(this.resolutionScale * 100).toFixed(0)}% based on device type`);
     }
@@ -82,23 +82,29 @@ export class PerformanceManager {
                 this.fpsHistory.shift();
             }
             
+            // Calculate average FPS from recent history
+            const recentFps = this.fpsHistory.slice(-10);
+            const avgFps = recentFps.reduce((sum, fps) => sum + fps, 0) / recentFps.length;
+
+            // If we're in optimal state (50+ FPS at 100% resolution), only check if FPS drops
+            if (this.isOptimalState) {
+                if (avgFps < this.targetFps) {
+                    this.isOptimalState = false;
+                    console.log(`FPS dropped below target (${avgFps.toFixed(1)}), resuming resolution management`);
+                }
+                return;
+            }
+            
             // Only consider resolution changes after MIN_CHANGE_INTERVAL to prevent flickering
             if (now - this.lastResolutionChangeTime < this.MIN_CHANGE_INTERVAL) {
                 return;
             }
             
-            // Calculate average FPS from history to avoid rapid fluctuations
-            // Use the last 10 samples only, but keep a longer history for stability
-            const recentFps = this.fpsHistory.slice(-10);
-            const avgFps = recentFps.reduce((sum, fps) => sum + fps, 0) / recentFps.length;
-            
-            // If FPS is below target minimum, reduce resolution to improve performance
-            if (avgFps < this.TARGET_MIN_FPS) {
-                // Reduce resolution more aggressively when FPS is very low
+            // If FPS is below target, reduce resolution
+            if (avgFps < this.targetFps) {
                 const reduction = avgFps < 30 ? 0.9 : 0.95;
                 const newScale = Math.max(this.resolutionScale * reduction, this.MIN_RESOLUTION_SCALE);
                 
-                // Only apply if the change is significant (>1%)
                 if (Math.abs(newScale - this.resolutionScale) > 0.01) {
                     this.resolutionScale = newScale;
                     this.applyResolutionScale();
@@ -106,15 +112,20 @@ export class PerformanceManager {
                     console.log(`FPS: ${avgFps.toFixed(1)} - Reducing resolution to ${(this.resolutionScale * 100).toFixed(0)}%`);
                 }
             } 
-            // If FPS is above target and we have headroom, gradually increase resolution
-            else if (avgFps > this.TARGET_MIN_FPS && this.resolutionScale < 1.0) {
-                // Increase by 5% at a time as long as we maintain good FPS
+            // If FPS is above target, gradually increase resolution
+            else if (avgFps > this.targetFps && this.resolutionScale < 1.0) {
                 const newScale = Math.min(this.resolutionScale + 0.05, 1.0);
                 
                 this.resolutionScale = newScale;
                 this.applyResolutionScale();
                 this.lastResolutionChangeTime = now;
                 console.log(`FPS: ${avgFps.toFixed(1)} - Increasing resolution to ${(this.resolutionScale * 100).toFixed(0)}%`);
+
+                // Check if we've reached optimal state (50+ FPS at 100% resolution)
+                if (this.resolutionScale >= 1.0) {
+                    this.isOptimalState = true;
+                    console.log(`Achieved optimal state: ${avgFps.toFixed(1)} FPS at 100% resolution`);
+                }
             }
         }
     }

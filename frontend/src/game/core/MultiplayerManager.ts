@@ -4,9 +4,9 @@ import { LightCycle } from './LightCycle';
 import { Player } from '../../network/gameClient';
 
 // Constants for performance optimization
-const UPDATE_FREQUENCY = 0.03; // 33Hz for smooth updates
-const POSITION_LERP_FACTOR = 0.2; // Smooth interpolation
-const ROTATION_LERP_FACTOR = 0.3; // Quick rotation updates
+const UPDATE_FREQUENCY = 0.016; // 60Hz for smoother updates
+const POSITION_LERP_FACTOR = 0.4; // More aggressive position interpolation
+const ROTATION_LERP_FACTOR = 0.5; // Quicker rotation updates
 const MAX_VISIBLE_DISTANCE = 300; // Only show nearby players
 
 export class MultiplayerManager {

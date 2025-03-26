@@ -38,7 +38,7 @@ export class LightCycle {
     private trailMaterial: THREE.MeshBasicMaterial | null = null;
     private readonly MAX_TRAIL_LENGTH = 10;
     private scene: THREE.Scene;
-    private rearLight: THREE.PointLight;
+    private bikeLight: THREE.PointLight; // Single consolidated light for the bike
     private initialScale = new THREE.Vector3(3.0, 2.5, 2.5);
     private lastGridPosition: THREE.Vector3;
     private isTurning = false;
@@ -46,7 +46,6 @@ export class LightCycle {
     private readonly TURN_DURATION = 0.5;
     private lastUpdateTime = 0;
     private readonly MOVEMENT_UPDATE_RATE = 1000 / 60; // 60 FPS
-    private trailLight!: THREE.PointLight;
     private readonly TRAIL_GROWTH_RATE = 1;
     private currentTrailLength = 100;
     private totalTrailDistance = 0;
@@ -96,9 +95,9 @@ export class LightCycle {
         // Get random color for this bike
         this.bikeColor = ColorUtils.getRandomTronColor();
 
-        // Create rear light with increased intensity and bike color
-        this.rearLight = new THREE.PointLight(this.bikeColor.hex, 3, 40);
-        scene.add(this.rearLight);
+        // Create a single consolidated light for the bike with reduced intensity and range
+        this.bikeLight = new THREE.PointLight(this.bikeColor.hex, 1.5, 20);
+        scene.add(this.bikeLight);
 
         // Initialize trail system with bike color
         this.initLightTrail();
@@ -394,7 +393,7 @@ export class LightCycle {
     private updateVisuals() {
         if (!this.modelContainer) return;
         
-        // Update container position (the mesh itself is offset inside)
+        // Update container position
         this.modelContainer.position.copy(this.body.position as any);
         
         // Update rotation
@@ -402,13 +401,13 @@ export class LightCycle {
         this.modelContainer.rotation.z = this.currentBankAngle;
         this.modelContainer.rotation.x = this.isJumping ? -0.2 : 0;
 
-        // Update rear light - now relative to container position
-        const rearOffset = new THREE.Vector3(
-            -Math.sin(this.currentRotation) * 3,
+        // Update bike light position - now relative to container position
+        const lightOffset = new THREE.Vector3(
+            -Math.sin(this.currentRotation) * 2,
             1.0,
-            -Math.cos(this.currentRotation) * 3
+            -Math.cos(this.currentRotation) * 2
         );
-        this.rearLight.position.copy(this.modelContainer.position).add(rearOffset);
+        this.bikeLight.position.copy(this.modelContainer.position).add(lightOffset);
     }
 
     private updateTrail() {
@@ -446,9 +445,6 @@ export class LightCycle {
             if (this.trailPoints.length >= 2) {
                 this.rebuildTrailGeometry();
             }
-            
-            // Update trail light to follow the current height
-            this.trailLight.position.set(newPoint.x, newPoint.y + 0.5, newPoint.z);
         }
     }
 
@@ -594,19 +590,12 @@ export class LightCycle {
         window.removeEventListener('keyup', this.keyupHandler);
         window.removeEventListener('gameControl', this.gameControlHandler);
         
-        // Remove lights and dispose of their resources
-        if (this.rearLight) {
-            if (this.rearLight.parent) {
-                this.rearLight.parent.remove(this.rearLight);
+        // Remove bike light
+        if (this.bikeLight) {
+            if (this.bikeLight.parent) {
+                this.bikeLight.parent.remove(this.bikeLight);
             }
-            this.rearLight.dispose();
-        }
-        
-        if (this.trailLight) {
-            if (this.trailLight.parent) {
-                this.trailLight.parent.remove(this.trailLight);
-            }
-            this.trailLight.dispose();
+            this.bikeLight.dispose();
         }
         
         // Remove light trails
@@ -673,7 +662,9 @@ export class LightCycle {
             transparent: true,
             opacity: 0.9,
             side: THREE.DoubleSide,
-            depthWrite: true // Enable depth writing for proper visual appearance
+            depthWrite: true, // Enable depth writing for proper visual appearance
+            emissive: this.bikeColor.hex,
+            emissiveIntensity: 0.8 // Add emissive for self-illumination
         });
 
         // Initialize with empty positions
@@ -685,10 +676,6 @@ export class LightCycle {
         this.trailLine.renderOrder = 1;
         this.trailLine.frustumCulled = false; // Disable frustum culling to ensure trail is always visible
         this.scene.add(this.trailLine);
-
-        // Create trail light with increased intensity and bike color
-        this.trailLight = new THREE.PointLight(this.bikeColor.hex, 1.5, 20);
-        this.scene.add(this.trailLight);
     }
 
     private jump() {
@@ -717,8 +704,7 @@ export class LightCycle {
                 this.mesh.scale.copy(this.initialScale);
                 
                 // Move the model DOWN so wheels touch the ground
-                // This is the key fix - offset the model within its container
-                this.mesh.position.y = -1.0; // Adjust this value as needed to get wheels on ground
+                this.mesh.position.y = -1.0;
                 
                 // Create materials
                 const bodyMaterial = new THREE.MeshPhysicalMaterial({
@@ -732,7 +718,7 @@ export class LightCycle {
                 const glowMaterial = new THREE.MeshPhysicalMaterial({
                     color: this.bikeColor.hex,
                     emissive: this.bikeColor.hex,
-                    emissiveIntensity: 1.0,
+                    emissiveIntensity: 0.8, // Reduced emissive intensity
                     metalness: 0.9,
                     roughness: 0.2,
                     clearcoat: 1.0,
@@ -741,17 +727,17 @@ export class LightCycle {
                     opacity: 0.9
                 });
 
-                // Apply materials and create edge highlights
+                // Apply materials and create edge highlights with reduced intensity
                 this.mesh.traverse((child) => {
                     if (child instanceof THREE.Mesh) {
-                        // Add edge highlights
+                        // Add edge highlights with reduced intensity
                         const edges = new THREE.EdgesGeometry(child.geometry, 30);
                         const edgesMesh = new THREE.LineSegments(
                             edges,
                             new THREE.LineBasicMaterial({ 
                                 color: this.bikeColor.hex,
                                 transparent: true,
-                                opacity: 0.9,
+                                opacity: 0.7, // Reduced opacity
                                 linewidth: 1
                             })
                         );
@@ -762,30 +748,15 @@ export class LightCycle {
                             ? glowMaterial 
                             : bodyMaterial;
 
-                        // Add wheel lights
-                        if (child.name.toLowerCase().includes('wheel')) {
-                            const wheelLight = new THREE.PointLight(this.bikeColor.hex, 1, 3);
-                            child.add(wheelLight);
-                        }
-
                         child.castShadow = true;
                         child.receiveShadow = true;
                     }
                 });
 
-                // Add bike lights
-                const headlight = new THREE.SpotLight(this.bikeColor.hex, 2, 100, Math.PI / 6, 0.5, 2);
-                headlight.position.set(0, 1, 2);
-                this.mesh.add(headlight);
-
-                const bikeGlow = new THREE.PointLight(this.bikeColor.hex, 0.5, 5);
-                bikeGlow.position.set(0, 1, 0);
-                this.mesh.add(bikeGlow);
-
-                // Add model to container instead of directly to scene
+                // Add model to container
                 this.modelContainer.add(this.mesh);
                 
-                // Don't initialize trail right away, wait for activation time
+                // Initialize trail position
                 this.lastTrailPoint = new THREE.Vector3(
                     this.mesh.position.x,
                     this.BASE_TRAIL_HEIGHT,
@@ -841,17 +812,12 @@ export class LightCycle {
         this.body.position.copy(position as any);
         this.body.velocity.setZero(); // Reset velocity to prevent drift
         
-        // Update lights position
-        this.rearLight.position.copy(position)
+        // Update bike light position
+        this.bikeLight.position.copy(position)
             .add(new THREE.Vector3(
-                -Math.sin(this.currentRotation) * 3,
+                -Math.sin(this.currentRotation) * 2,
                 1.0,
-                -Math.cos(this.currentRotation) * 3
+                -Math.cos(this.currentRotation) * 2
             ));
-        
-        // Update trail position
-        if (this.trailLight) {
-            this.trailLight.position.set(position.x, position.y + 0.5, position.z);
-        }
     }
 } 
