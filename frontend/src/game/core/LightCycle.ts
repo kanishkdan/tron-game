@@ -797,6 +797,11 @@ export class LightCycle {
 
     // Add getter for trail points (for minimap)
     getTrailPoints(): THREE.Vector3[] {
+        // Ensure we always return at least the last trail point if it exists
+        // This helps with collision detection in multiplayer
+        if (this.trailPoints.length === 0 && this.lastTrailPoint) {
+            return [this.lastTrailPoint.clone()];
+        }
         return this.trailPoints;
     }
 

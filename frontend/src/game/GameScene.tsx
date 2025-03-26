@@ -80,6 +80,11 @@ const GameRenderer = ({
         // Initialize multiplayer manager
         multiplayerManager.current = new MultiplayerManager(scene, world.current);
         multiplayerManager.current.setLocalPlayerId(gameClient.getPlayerId() || '');
+        
+        // Link multiplayer manager with game if both exist
+        if (game && multiplayerManager.current) {
+            game.setMultiplayerManager(multiplayerManager.current);
+        }
 
         // Set up WebSocket event handlers
         gameClient.on('player_joined', (data) => {
@@ -188,6 +193,7 @@ export const GameScene = () => {
     const scene = useRef<THREE.Scene>();
     const game = useRef<TronGame>();
     const gameClient = useRef<GameClient>();
+    const multiplayerManager = useRef<MultiplayerManager>();
 
     // Handle trail activation events
     const handleTrailActivation = (event: TrailActivationEvent) => {
@@ -231,6 +237,12 @@ export const GameScene = () => {
                 );
                 
                 game.current.start(name);
+                
+                // Create and link multiplayer manager
+                const mpManager = new MultiplayerManager(scene.current, physicsWorld);
+                mpManager.setLocalPlayerId(gameClient.current.getPlayerId() || '');
+                game.current.setMultiplayerManager(mpManager);
+                multiplayerManager.current = mpManager;
                 
                 if (game.current) {
                     setArenaSize(game.current.getArenaSize());

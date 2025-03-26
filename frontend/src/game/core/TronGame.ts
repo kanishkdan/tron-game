@@ -227,7 +227,7 @@ export class TronGame {
                         nextPoint
                     );
                     
-                    if (distanceToSegment < 2) { // Same collision threshold
+                    if (distanceToSegment < 3) { // Increased collision threshold for remote trails
                         this.handleCollision(cycle);
                         return;
                     }
