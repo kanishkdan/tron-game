@@ -353,9 +353,10 @@ export class LightCycle {
         // Check if trails should be activated (only for local player)
         if (!this.useSharedResources && !this.trailsActive) {
             this.checkTrailActivation(currentTime);
+            return; // Don't update trails during activation phase
         }
         
-        // Update trail only if active
+        // Update trail only if active and not in activation phase
         if (this.trailsActive && !skipTrails) {
             this.trailUpdateCounter++;
             if (this.trailUpdateCounter >= this.TRAIL_UPDATE_INTERVAL) {
@@ -366,6 +367,9 @@ export class LightCycle {
     }
 
     private updatePhysics(deltaTime: number) {
+        // Skip collision detection during activation phase
+        const isInActivationPhase = !this.trailsActive && !this.useSharedResources;
+        
         // Check boundary collisions
         const pos = this.modelContainer.position;
         const boundary = this.ARENA_SIZE / 2 - 5;
@@ -402,37 +406,40 @@ export class LightCycle {
             this.body.velocity.y = 0;
         }
 
-        // Check trail collisions using line segments
-        if (this.trailPoints.length > 10) {
-            const bikePos = new THREE.Vector3(pos.x, pos.y, pos.z);
-            const bikeRadius = 2.0;
-            const collisionDistance = bikeRadius + this.TRAIL_WIDTH;
-            
-            // Skip the last 10 points to prevent immediate self-collision
-            for (let i = 0; i < this.trailPoints.length - 10; i++) {
-                if (i + 1 < this.trailPoints.length) {
-                    const p1 = this.trailPoints[i];
-                    const p2 = this.trailPoints[i + 1];
-                    
-                    // Only check collision if bike is at similar height to trail segment
-                    const trailHeight = (p1.y + p2.y) / 2;
-                    if (Math.abs(bikePos.y - trailHeight) < 1.0) {
-                        const lineSeg = new THREE.Line3(
-                            new THREE.Vector3(p1.x, p1.y, p1.z),
-                            new THREE.Vector3(p2.x, p2.y, p2.z)
-                        );
+        // Skip trail collision detection during activation phase
+        if (!isInActivationPhase) {
+            // Check trail collisions using line segments
+            if (this.trailPoints.length > 10) {
+                const bikePos = new THREE.Vector3(pos.x, pos.y, pos.z);
+                const bikeRadius = 2.0;
+                const collisionDistance = bikeRadius + this.TRAIL_WIDTH;
+                
+                // Skip the last 10 points to prevent immediate self-collision
+                for (let i = 0; i < this.trailPoints.length - 10; i++) {
+                    if (i + 1 < this.trailPoints.length) {
+                        const p1 = this.trailPoints[i];
+                        const p2 = this.trailPoints[i + 1];
                         
-                        const closestPoint = new THREE.Vector3();
-                        lineSeg.closestPointToPoint(bikePos, true, closestPoint);
-                        
-                        const distance = bikePos.distanceTo(closestPoint);
-                        
-                        if (distance < collisionDistance) {
-                            this.modelContainer.visible = false;
-                            this.body.velocity.setZero();
-                            this.currentSpeed = 0;
-                            this.onCollision?.();
-                            return;
+                        // Only check collision if bike is at similar height to trail segment
+                        const trailHeight = (p1.y + p2.y) / 2;
+                        if (Math.abs(bikePos.y - trailHeight) < 1.0) {
+                            const lineSeg = new THREE.Line3(
+                                new THREE.Vector3(p1.x, p1.y, p1.z),
+                                new THREE.Vector3(p2.x, p2.y, p2.z)
+                            );
+                            
+                            const closestPoint = new THREE.Vector3();
+                            lineSeg.closestPointToPoint(bikePos, true, closestPoint);
+                            
+                            const distance = bikePos.distanceTo(closestPoint);
+                            
+                            if (distance < collisionDistance) {
+                                this.modelContainer.visible = false;
+                                this.body.velocity.setZero();
+                                this.currentSpeed = 0;
+                                this.onCollision?.();
+                                return;
+                            }
                         }
                     }
                 }
@@ -727,6 +734,14 @@ export class LightCycle {
         return this.body;
     }
     
+    getCreationTime(): number {
+        return this.creationTime;
+    }
+
+    getTrailsActive(): boolean {
+        return this.trailsActive;
+    }
+
     dispose() {
         // Release the color when the bike is disposed
         ColorUtils.releaseColor(this.bikeColor.hex);
@@ -803,6 +818,10 @@ export class LightCycle {
             return [this.lastTrailPoint.clone()];
         }
         return this.trailPoints;
+    }
+
+    getPhysicsBody(): CANNON.Body {
+        return this.body;
     }
 
     private initLightTrail() {

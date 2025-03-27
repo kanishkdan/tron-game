@@ -32,10 +32,7 @@ export const GameUI = () => {
     <div className="game-ui">
       <div className="game-info">
         <div className="player-count">
-          Players: {gameState.player_count}/{gameState.max_players}
-        </div>
-        <div className="game-phase">
-          Phase: {gameState.game_phase}
+          Players Online: {gameState.player_count}
         </div>
         {gameState.current_round > 0 && (
           <div className="current-round">

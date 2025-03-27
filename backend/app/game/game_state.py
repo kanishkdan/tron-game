@@ -7,12 +7,9 @@ class GameState:
         self.eliminated_players: List[str] = []
         self.game_phase = "waiting"  # waiting, playing, finished
         self.current_round = 0
-        self.max_players = 16
         self.min_players = 2  # Reduced for easier testing
         
     def add_player(self, player_id: str) -> bool:
-        if len(self.players) >= self.max_players:
-            return False
         self.players[player_id] = Player(id=player_id)
         return True
     
@@ -42,7 +39,6 @@ class GameState:
             "game_phase": self.game_phase,
             "current_round": self.current_round,
             "player_count": len(self.players),
-            "max_players": self.max_players,
             "min_players": self.min_players
         }
     

@@ -103,6 +103,7 @@ export class TronGame {
             
             try {
                 // Create new light cycle with collision and trail callbacks
+                // Pass false for useSharedResources to ensure activation delay for all players
                 const remoteCycle = new LightCycle(
                     this.scene,
                     startPos,
@@ -115,7 +116,8 @@ export class TronGame {
                                 secondsRemaining
                             });
                         }
-                    }
+                    },
+                    false // Set to false to ensure remote players also have activation delay
                 );
                 
                 // Add to players map
@@ -142,6 +144,22 @@ export class TronGame {
 
     getArenaSize(): number {
         return this.ARENA_SIZE;
+    }
+
+    // Add method to remove a player by ID
+    removePlayer(playerId: string): void {
+        // Check if player exists in our map
+        if (this.players.has(playerId)) {
+            const cycle = this.players.get(playerId);
+            if (cycle) {
+                // Clean up resources
+                cycle.cleanupTrails();
+                cycle.dispose();
+            }
+            // Remove from player map
+            this.players.delete(playerId);
+            console.log(`Player ${playerId} removed from TronGame`);
+        }
     }
 
     private update = () => {
@@ -172,6 +190,11 @@ export class TronGame {
     }
 
     private checkCollisions(cycle: LightCycle) {
+        // Skip collision detection if trails aren't active yet (immunity period)
+        if (!cycle.getTrailsActive()) {
+            return;
+        }
+        
         // Get cycle's current position
         const position = cycle.getPosition();
         
@@ -187,6 +210,9 @@ export class TronGame {
         for (const [name, otherCycle] of this.players) {
             // Skip collision check with own trail
             if (otherCycle === cycle) continue;
+            
+            // Skip collision check with cycles that don't have active trails yet
+            if (!otherCycle.getTrailsActive()) continue;
 
             // Get other cycle's trail segments
             const trailSegments = otherCycle.getLightTrail();
@@ -218,6 +244,9 @@ export class TronGame {
         if (this.multiplayerManager) {
             const remotePlayers = this.multiplayerManager.getRemotePlayers();
             for (const [id, remoteCycle] of remotePlayers) {
+                // Skip collision check with cycles that don't have active trails yet
+                if (!remoteCycle.getTrailsActive()) continue;
+                
                 // Get remote cycle's trail points
                 const trailPoints = remoteCycle.getTrailPoints();
                 if (trailPoints.length < 2) continue;

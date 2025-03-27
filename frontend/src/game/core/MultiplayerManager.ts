@@ -63,74 +63,102 @@ export class MultiplayerManager {
     addPlayer(playerId: string, position?: { x: number; y: number; z: number }, playerName?: string) {
         console.log(`Adding remote player: ${playerId}`);
         
+        // Skip if this is the local player
         if (playerId === this.localPlayerId) {
             console.log("Skipping local player");
+            return;
+        }
+        
+        // Also skip if player ID is empty or invalid
+        if (!playerId || playerId === 'null' || playerId === 'undefined') {
+            console.error("Invalid player ID, skipping creation");
             return;
         }
 
         // Store player name
         this.playerNames.set(playerId, playerName || playerId);
 
-        // Remove any existing instance first (with gradual cleanup)
-        this.schedulePlayerRemoval(playerId);
-
-        try {
-            const cycle = new LightCycle(
-                this.scene,
-                position ? new THREE.Vector3(position.x, position.y || 0.5, position.z) : new THREE.Vector3(0, 0.5, 0),
-                this.world,
-                () => console.log(`Remote player ${playerId} collision`),
-                undefined,
-                true // Use shared resources flag to activate trails immediately
-            );
-            
-            this.remotePlayers.set(playerId, cycle);
-            
-            if (position) {
-                const pos = new THREE.Vector3(position.x, position.y || 0.5, position.z);
-                this.remotePositions.set(playerId, pos);
-                this.enemyPositions.set(playerId, { x: position.x, z: position.z });
-            } else {
-                this.remotePositions.set(playerId, new THREE.Vector3(0, 0.5, 0));
-                this.enemyPositions.set(playerId, { x: 0, z: 0 });
-            }
-            
-            this.remoteRotations.set(playerId, 0);
-            this.remoteLODLevels.set(playerId, LOD_LOW);
-            return cycle;
-        } catch (error) {
-            console.error(`Error creating remote player ${playerId}:`, error);
-        }
-    }
-
-    // Schedule player removal to avoid frame drops during player exit
-    schedulePlayerRemoval(playerId: string) {
-        if (this.remotePlayers.has(playerId) && !this.pendingRemovals.includes(playerId)) {
-            this.pendingRemovals.push(playerId);
-        }
-    }
-
-    // Process removals gradually over multiple frames
-    processScheduledRemovals(deltaTime: number) {
-        this.removalTimer += deltaTime;
+        // Forcefully remove any existing instance of this player first
+        this.forceRemovePlayer(playerId);
         
-        // Process one removal per frame to distribute load
-        if (this.pendingRemovals.length > 0 && this.removalTimer > 0.1) {
-            const playerId = this.pendingRemovals.shift();
-            if (playerId && this.remotePlayers.has(playerId)) {
-                this.removePlayer(playerId);
+        // Ensure all maps are clean
+        const maps = [
+            this.remotePlayers,
+            this.remotePositions,
+            this.remoteRotations,
+            this.enemyPositions, 
+            this.remoteLODLevels
+        ];
+        
+        maps.forEach(map => {
+            if (map.has(playerId)) {
+                console.log(`Found stale player ${playerId} in a map, clearing...`);
+                map.delete(playerId);
             }
-            this.removalTimer = 0;
-        }
+        });
+
+        // Create new bike with a small delay to ensure resources are freed
+        setTimeout(() => {
+            try {
+                const cycle = new LightCycle(
+                    this.scene,
+                    position ? new THREE.Vector3(position.x, position.y || 0.5, position.z) : new THREE.Vector3(0, 0.5, 0),
+                    this.world,
+                    () => console.log(`Remote player ${playerId} collision`),
+                    undefined,
+                    true // Use shared resources flag to activate trails immediately
+                );
+                
+                this.remotePlayers.set(playerId, cycle);
+                
+                if (position) {
+                    const pos = new THREE.Vector3(position.x, position.y || 0.5, position.z);
+                    this.remotePositions.set(playerId, pos);
+                    this.enemyPositions.set(playerId, { x: position.x, z: position.z });
+                } else {
+                    this.remotePositions.set(playerId, new THREE.Vector3(0, 0.5, 0));
+                    this.enemyPositions.set(playerId, { x: 0, z: 0 });
+                }
+                
+                this.remoteRotations.set(playerId, 0);
+                this.remoteLODLevels.set(playerId, LOD_LOW);
+                return cycle;
+            } catch (error) {
+                console.error(`Error creating remote player ${playerId}:`, error);
+            }
+        }, 50); // Small delay to ensure cleanup
     }
 
-    removePlayer(playerId: string) {
-        console.log(`Removing player ${playerId}`);
+    // New method for immediate and thorough removal without scheduling
+    forceRemovePlayer(playerId: string) {
+        console.log(`Force removing player ${playerId}`);
         const cycle = this.remotePlayers.get(playerId);
         if (cycle) {
-            // Ensure trails are cleaned up
-            cycle.cleanupTrails();
-            cycle.dispose();
+            try {
+                // Ensure trails are cleaned up
+                cycle.cleanupTrails();
+                
+                // Remove from scene
+                if (cycle.getLightTrail().length > 0) {
+                    this.scene.remove(...cycle.getLightTrail());
+                }
+                
+                // Remove physics body
+                try {
+                    if (cycle.getPhysicsBody() && cycle.getPhysicsBody().world) {
+                        this.world.removeBody(cycle.getPhysicsBody());
+                    }
+                } catch (e) {
+                    console.error(`Error removing physics body for ${playerId}:`, e);
+                }
+                
+                // Dispose resources
+                cycle.dispose();
+            } catch (e) {
+                console.error(`Error during cycle cleanup for ${playerId}:`, e);
+            }
+            
+            // Delete from maps
             this.remotePlayers.delete(playerId);
             this.remotePositions.delete(playerId);
             this.remoteRotations.delete(playerId);
@@ -143,6 +171,36 @@ export class MultiplayerManager {
                 this.pendingRemovals.splice(pendingIndex, 1);
             }
         }
+    }
+
+    removePlayer(playerId: string) {
+        console.log(`Removing player ${playerId}`);
+        
+        // Stop any ongoing operations with this player
+        if (this.pendingRemovals.includes(playerId)) {
+            const index = this.pendingRemovals.indexOf(playerId);
+            this.pendingRemovals.splice(index, 1);
+        }
+        
+        // Clean up the player resources
+        this.forceRemovePlayer(playerId);
+        
+        // Double check all maps to ensure complete removal
+        const maps = [
+            this.remotePlayers,
+            this.remotePositions,
+            this.remoteRotations,
+            this.enemyPositions,
+            this.remoteLODLevels
+        ];
+        
+        // Ensure player is completely removed from all maps
+        maps.forEach(map => {
+            if (map.has(playerId)) {
+                console.log(`Found player ${playerId} still in a map, removing...`);
+                map.delete(playerId);
+            }
+        });
     }
 
     updatePlayerPosition(playerId: string, position: { x: number; y: number; z: number }, rotation?: number) {
@@ -187,8 +245,7 @@ export class MultiplayerManager {
     }
 
     update(deltaTime: number) {
-        // Process any pending removals
-        this.processScheduledRemovals(deltaTime);
+        // No longer process scheduled removals since we're doing immediate removal
         
         this.updateAccumulator += deltaTime;
         this.physicsAccumulator += deltaTime;
@@ -206,7 +263,7 @@ export class MultiplayerManager {
             
             if (Math.abs(position.x) > boundary || Math.abs(position.z) > boundary) {
                 console.log(`Player ${id} out of bounds, removing`);
-                this.schedulePlayerRemoval(id);
+                this.removePlayer(id);
                 return;
             }
             
@@ -241,6 +298,15 @@ export class MultiplayerManager {
     private checkPlayerCollisions(cycle: LightCycle, playerId: string) {
         const position = cycle.getPosition();
         
+        // Skip collision detection for this player during activation phase
+        const creationTime = cycle.getCreationTime ? cycle.getCreationTime() : 0;
+        const elapsedTime = creationTime ? performance.now() - creationTime : Number.MAX_VALUE;
+        const isImmuneLocalPlayer = elapsedTime < 5000; // 5 seconds immunity
+        
+        if (isImmuneLocalPlayer) {
+            return; // Skip collision detection during immunity period
+        }
+        
         // Check against all other players' trails
         this.remotePlayers.forEach((otherCycle, otherId) => {
             // Skip checking against own trail
@@ -264,7 +330,7 @@ export class MultiplayerManager {
                 
                 if (distanceToSegment < 2) { // Collision threshold
                     console.log(`Player ${playerId} collided with ${otherId}'s trail`);
-                    this.schedulePlayerRemoval(playerId);
+                    this.removePlayer(playerId);
                     return;
                 }
             }

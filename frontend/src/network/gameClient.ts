@@ -123,30 +123,102 @@ export class GameClient {
     localStorage.removeItem(this.sessionStorageKey);
   }
 
-  private handleDisconnect() {
-    console.log(`[DEBUG] Handling disconnect for player ${this.playerId}, attempts: ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-    
-    // If disconnected very quickly after connection, there might be an issue with the server
-    const timeSinceConnect = performance.now() - this.lastConnectTime;
-    if (timeSinceConnect < 2000) {
-      console.log(`[DEBUG] Disconnected shortly after connecting (${Math.round(timeSinceConnect)}ms). Waiting longer before reconnect.`);
-      this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, 10000);
-    }
-    
-    if (this.reconnectAttempts < this.maxReconnectAttempts && this.playerId) {
-      console.log(`[DEBUG] Attempting to reconnect (${this.reconnectAttempts + 1}/${this.maxReconnectAttempts}) in ${this.reconnectTimeout}ms...`);
-      setTimeout(() => {
+  handleDisconnect() {
+    try {
+      const playerId = this.playerId;
+      console.log(`[DEBUG] Handling disconnect for player ${playerId}, attempts: ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+      this.socket = null;
+
+      // Don't attempt to reconnect if we've reached the maximum attempts or just connected
+      const timeSinceLastConnect = performance.now() - this.lastConnectTime;
+      
+      // If we disconnected very shortly after connecting, likely a server issue
+      if (timeSinceLastConnect < 1000) {
+        console.log(`[DEBUG] Disconnected shortly after connecting (${Math.round(timeSinceLastConnect)}ms). Waiting longer before reconnect.`);
+        // First wait a bit longer to let server stabilize
+        setTimeout(() => {
+          if (this.playerId) {
+            this.reconnect();
+          }
+        }, 2000);
+        return;
+      }
+
+      // For other cases, use regular exponential backoff
+      if (this.reconnectAttempts < this.maxReconnectAttempts && this.playerId) {
+        // Exponential backoff: increase timeout for each attempt
+        const timeout = this.reconnectTimeout * Math.pow(1.5, this.reconnectAttempts);
+        this.reconnectTimeout = Math.min(timeout, 10000); // Cap at 10 seconds
         this.reconnectAttempts++;
-        const playerName = this.playerId?.split('-')[0];
-        if (playerName) {
-          this.connect(playerName).catch(() => {
-            // Exponential backoff
-            this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, 10000);
-          });
+        
+        console.log(`[DEBUG] Reconnecting attempt ${this.reconnectAttempts} in ${this.reconnectTimeout}ms`);
+        
+        setTimeout(() => {
+          if (this.playerId) {
+            this.reconnect();
+          }
+        }, this.reconnectTimeout);
+      } else {
+        console.log(`[DEBUG] Maximum reconnect attempts reached or no player ID. Giving up.`);
+        // Trigger disconnect event to clean up any ghost bikes
+        if (playerId) {
+          this.dispatchEvent('player_left', { player_id: playerId });
         }
-      }, this.reconnectTimeout);
-    } else {
-      console.log(`[DEBUG] Maximum reconnect attempts reached or no player ID. Giving up.`);
+      }
+    } catch (error) {
+      console.error("Error in handleDisconnect:", error);
+    }
+  }
+
+  private reconnect() {
+    if (!this.playerId) return;
+    
+    console.log(`[DEBUG] Attempting to reconnect player ${this.playerId}`);
+    
+    try {
+      // Clean up old connection explicitly
+      if (this.socket) {
+        this.socket.onclose = null;
+        this.socket.onerror = null;
+        this.socket.onmessage = null;
+        this.socket.onopen = null;
+        this.socket.close();
+        this.socket = null;
+      }
+      
+      // Create a new connection
+      this.socket = new WebSocket(`${this.serverUrl}/ws/${this.playerId}`);
+      
+      this.socket.onopen = () => {
+        console.log(`[DEBUG] Reconnection successful for player ${this.playerId}`);
+        this.lastConnectTime = performance.now();
+        this.reconnectAttempts = 0;
+        this.reconnectTimeout = 1000;
+        
+        // Trigger sync event to ensure game state is current
+        this.dispatchEvent('reconnected', { player_id: this.playerId });
+      };
+      
+      this.socket.onclose = (event) => {
+        console.log('WebSocket reconnection closed:', event);
+        this.handleDisconnect();
+      };
+      
+      this.socket.onerror = (error) => {
+        console.error('WebSocket reconnection error:', error);
+      };
+      
+      this.socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          this.handleGameEvent(message);
+        } catch (error) {
+          console.error('Error parsing message during reconnection:', error);
+        }
+      };
+    } catch (error) {
+      console.error(`Error during reconnection:`, error);
+      this.handleDisconnect();
     }
   }
 
@@ -166,7 +238,11 @@ export class GameClient {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, []);
     }
-    this.eventHandlers.get(event)?.push(handler);
+    
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      handlers.push(handler);
+    }
   }
 
   off(event: string, handler: (data: any) => void) {
@@ -191,10 +267,19 @@ export class GameClient {
     }
   }
 
-  private handleGameEvent(event: GameEvent) {
-    const handlers = this.eventHandlers.get(event.type);
-    if (handlers) {
-      handlers.forEach(handler => handler(event.data));
-    }
+  private handleGameEvent(message: any) {
+    const { type, data } = message;
+    
+    // Inform any registered handlers
+    const handlers = this.eventHandlers.get(type) || [];
+    handlers.forEach(handler => handler(data));
+  }
+  
+  /**
+   * Manually dispatch an event to handlers
+   */
+  private dispatchEvent(type: string, data: any) {
+    const handlers = this.eventHandlers.get(type) || [];
+    handlers.forEach(handler => handler(data));
   }
 } 
