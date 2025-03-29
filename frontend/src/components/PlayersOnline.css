@@ -1,0 +1,55 @@
+.players-online {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 9999;
+  font-family: 'Orbitron', sans-serif;
+  pointer-events: none;
+}
+
+.players-online-content {
+  background-color: rgba(0, 15, 30, 0.8);
+  color: #0fbef2; /* Tron blue */
+  padding: 10px 20px;
+  border-radius: 5px;
+  border: 1px solid #0fbef2;
+  box-shadow: 0 0 10px #0fbef2, inset 0 0 5px #0fbef2;
+  font-weight: bold;
+  font-size: 16px;
+  text-shadow: 0 0 5px #0fbef2;
+  pointer-events: auto;
+  animation: pulse 2s infinite;
+  transition: all 0.3s ease;
+}
+
+.players-online-content.disconnected {
+  color: #f44336; /* Red */
+  border-color: #f44336;
+  box-shadow: 0 0 10px #f44336, inset 0 0 5px #f44336;
+  animation: pulse-disconnected 1s infinite;
+  opacity: 0.8;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 10px #0fbef2, inset 0 0 5px #0fbef2;
+  }
+  50% {
+    box-shadow: 0 0 15px #0fbef2, inset 0 0 8px #0fbef2;
+  }
+  100% {
+    box-shadow: 0 0 10px #0fbef2, inset 0 0 5px #0fbef2;
+  }
+}
+
+@keyframes pulse-disconnected {
+  0% {
+    box-shadow: 0 0 10px #f44336, inset 0 0 5px #f44336;
+  }
+  50% {
+    box-shadow: 0 0 15px #f44336, inset 0 0 8px #f44336;
+  }
+  100% {
+    box-shadow: 0 0 10px #f44336, inset 0 0 5px #f44336;
+  }
+} 

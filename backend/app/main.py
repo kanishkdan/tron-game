@@ -132,26 +132,45 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
     try:
         await websocket.accept()
         print(f"Player {player_id} connected")
+        
+        # Check if player already exists, if so, handle as a reconnection
+        is_reconnection = player_id in active_connections
+        
+        # First update the connection reference (regardless of reconnection status)
+        old_connection = active_connections.get(player_id)
         active_connections[player_id] = websocket
         
-        # Add player to game state
-        game_state.add_player(player_id)
+        # Close old connection if it exists to prevent duplicate connections
+        if is_reconnection and old_connection != websocket:
+            try:
+                print(f"Closing old connection for reconnecting player {player_id}")
+                await old_connection.close()
+            except Exception as e:
+                print(f"Error closing old connection for {player_id}: {str(e)}")
         
-        # Get current state to send to the new player
+        # Add player to game state (or update if reconnecting)
+        if is_reconnection:
+            print(f"Player {player_id} is reconnecting")
+            # Refresh the player state but don't broadcast a new join event
+            game_state.update_player(player_id)
+        else:
+            # For new players, add them to game state
+            game_state.add_player(player_id)
+            # Broadcast new player to others
+            await broadcast({
+                "type": "player_joined",
+                "data": {"player_id": player_id}
+            }, exclude=player_id)
+        
+        # Get current state to send to the player
         current_state = game_state.get_state()
         print(f"Sending game state to {player_id}: {len(current_state['players'])} players")
         
-        # Send initial game state to the new player
+        # Send initial game state to the player
         await websocket.send_json({
             "type": "game_state",
             "data": current_state
         })
-        
-        # Broadcast new player to others
-        await broadcast({
-            "type": "player_joined",
-            "data": {"player_id": player_id}
-        }, exclude=player_id)
         
         # If this is the first real player, add bots automatically
         print(f"DEBUG: Active connections: {len(active_connections)}, Bots: {len(game_state.bots)}")
@@ -165,10 +184,12 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
             if not game_state.bot_update_task:
                 print("DEBUG: Starting bot update loop")
                 await game_state.start_bot_updates(broadcast)
-                
-            # Broadcast bot join events to the new player
+        else:
+            print(f"DEBUG: Not adding bots, conditions not met")
+            
+            # Send information about all bots to the newly connected player
             for bot_id, bot in game_state.bots.items():
-                print(f"DEBUG: Sending bot {bot_id} to new player {player_id}")
+                print(f"DEBUG: Sending bot {bot_id} to player {player_id}")
                 await websocket.send_json({
                     "type": "player_joined",
                     "data": {
@@ -177,14 +198,13 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                         "use_light_trails": bot.use_light_trails
                     }
                 })
-        else:
-            print(f"DEBUG: Not adding bots, conditions not met")
             
             # If we have bots but updates aren't running, start them
             if len(game_state.bots) > 0 and not game_state.bot_update_task:
                 print("DEBUG: Found existing bots, starting update loop")
                 await game_state.start_bot_updates(broadcast)
         
+        # Main message handling loop
         while True:
             try:
                 data = await websocket.receive_text()
@@ -217,31 +237,57 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                         "type": "player_eliminated",
                         "data": {"player_id": player_id}
                     })
+                
+                # Handle explicit player disconnect
+                elif message["type"] == "player_disconnect":
+                    print(f"Player {player_id} sent explicit disconnect")
+                    break
                     
             except json.JSONDecodeError:
                 print(f"Invalid JSON received from {player_id}")
                 continue
+            except WebSocketDisconnect:
+                print(f"WebSocket disconnect in message loop for {player_id}")
+                break
+            except Exception as e:
+                print(f"Error processing message from {player_id}: {str(e)}")
+                continue
                 
     except WebSocketDisconnect:
-        print(f"Client {player_id} disconnected")
+        print(f"Client {player_id} disconnected during setup")
     except Exception as e:
         print(f"Error handling WebSocket for {player_id}: {str(e)}")
     finally:
-        # Always clean up the connection and remove player from game state
-        if player_id in active_connections:
+        # Clean up the connection, but don't immediately remove player from game state
+        # This allows for brief disconnections/reconnections without removing the player
+        if player_id in active_connections and active_connections[player_id] == websocket:
             del active_connections[player_id]
-        game_state.remove_player(player_id)
-        print(f"Player {player_id} removed, broadcasting departure")
-        await broadcast({
-            "type": "player_left",
-            "data": {"player_id": player_id}
-        })
-        print(f"Active players: {len(active_connections)}")
+            
+        # Start a delayed removal task 
+        asyncio.create_task(delayed_player_removal(player_id))
+
+# Add a delayed player removal function to handle temporary disconnections
+async def delayed_player_removal(player_id: str, delay_seconds: int = 5):
+    """Remove player after a delay to allow for reconnections"""
+    try:
+        await asyncio.sleep(delay_seconds)
         
-        # If no real players left, stop bot updates
-        if len(active_connections) == 0 and game_state.bot_update_task:
-            print("DEBUG: No players left, stopping bot updates")
-            game_state.stop_bot_updates()
+        # If player hasn't reconnected after the delay, remove them
+        if player_id not in active_connections:
+            print(f"Player {player_id} didn't reconnect within {delay_seconds}s, removing")
+            game_state.remove_player(player_id)
+            await broadcast({
+                "type": "player_left",
+                "data": {"player_id": player_id}
+            })
+            print(f"Active players: {len(active_connections)}")
+            
+            # If no real players left, stop bot updates
+            if len(active_connections) == 0 and game_state.bot_update_task:
+                print("DEBUG: No players left, stopping bot updates")
+                game_state.stop_bot_updates()
+    except Exception as e:
+        print(f"Error in delayed player removal for {player_id}: {str(e)}")
 
 async def broadcast(message: dict, exclude: str = None):
     disconnected_players = []
@@ -255,11 +301,12 @@ async def broadcast(message: dict, exclude: str = None):
                 print(f"Error broadcasting to {player_id}: {str(e)}")
                 disconnected_players.append(player_id)
     
-    # Clean up any disconnected players
+    # Schedule cleanup for any disconnected players (don't remove immediately)
     for player_id in disconnected_players:
         if player_id in active_connections:
             del active_connections[player_id]
-        game_state.remove_player(player_id)
+            # Create a task to handle delayed removal
+            asyncio.create_task(delayed_player_removal(player_id))
 
 # Startup event to initialize the app
 @app.on_event("startup")

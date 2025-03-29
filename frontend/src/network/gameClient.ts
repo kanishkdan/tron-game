@@ -71,14 +71,33 @@ export class GameClient {
         // Check for existing player ID in session storage
         const storedPlayerId = localStorage.getItem(this.sessionStorageKey);
         
-        // Use stored ID or generate a new one with the player name
-        this.playerId = storedPlayerId || `${playerName}-${this.generateSessionId()}`;
-        
-        // Store the player ID for future sessions
-        localStorage.setItem(this.sessionStorageKey, this.playerId);
+        // Only use stored ID if it's valid and contains the player name
+        // This ensures consistent identification while allowing name changes
+        if (storedPlayerId && storedPlayerId.startsWith(playerName)) {
+          this.playerId = storedPlayerId;
+        } else {
+          // Generate a new ID with the player name prefix
+          this.playerId = `${playerName}-${this.generateSessionId()}`;
+          // Store the new player ID
+          localStorage.setItem(this.sessionStorageKey, this.playerId);
+        }
         
         console.log(`[DEBUG] Connecting with player ID: ${this.playerId}, stored ID was: ${storedPlayerId || 'none'}`);
         
+        if (this.socket) {
+          // Clean up any existing socket
+          this.socket.onclose = null;
+          this.socket.onerror = null;
+          this.socket.onmessage = null;
+          this.socket.onopen = null;
+          try {
+            this.socket.close();
+          } catch (e) {
+            console.log("Error closing existing socket:", e);
+          }
+          this.socket = null;
+        }
+
         this.socket = new WebSocket(`${this.serverUrl}/ws/${this.playerId}`);
 
         this.socket.onopen = () => {
@@ -113,27 +132,31 @@ export class GameClient {
     });
   }
 
-  // Generate a random session ID
+  // Generate a more stable session ID
   private generateSessionId(): string {
-    return Math.random().toString(36).substring(2, 12);
+    // Use timestamp + random to create a more unique ID
+    return Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
   }
 
   // Clear session (useful for testing)
   clearSession(): void {
     localStorage.removeItem(this.sessionStorageKey);
+    this.playerId = null;
   }
 
   handleDisconnect() {
     try {
       const playerId = this.playerId;
       console.log(`[DEBUG] Handling disconnect for player ${playerId}, attempts: ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-      this.socket = null;
+      
+      // Don't null the socket here to avoid race conditions
+      const wasConnected = this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING);
 
       // Don't attempt to reconnect if we've reached the maximum attempts or just connected
       const timeSinceLastConnect = performance.now() - this.lastConnectTime;
       
       // If we disconnected very shortly after connecting, likely a server issue
-      if (timeSinceLastConnect < 1000) {
+      if (wasConnected && timeSinceLastConnect < 1000) {
         console.log(`[DEBUG] Disconnected shortly after connecting (${Math.round(timeSinceLastConnect)}ms). Waiting longer before reconnect.`);
         // First wait a bit longer to let server stabilize
         setTimeout(() => {
@@ -160,6 +183,9 @@ export class GameClient {
         }, this.reconnectTimeout);
       } else {
         console.log(`[DEBUG] Maximum reconnect attempts reached or no player ID. Giving up.`);
+        // Mark the socket as null to allow fresh connection attempts
+        this.socket = null;
+        
         // Trigger disconnect event to clean up any ghost bikes
         if (playerId) {
           this.dispatchEvent('player_left', { player_id: playerId });
@@ -224,8 +250,31 @@ export class GameClient {
 
   disconnect() {
     if (this.socket) {
+      // Ensure we first send a clean disconnect message if possible
+      if (this.socket.readyState === WebSocket.OPEN && this.playerId) {
+        try {
+          this.socket.send(JSON.stringify({
+            type: 'player_disconnect',
+            data: { player_id: this.playerId }
+          }));
+        } catch (e) {
+          console.log("Error sending disconnect message:", e);
+        }
+      }
+      
+      // Clean up event handlers
+      this.socket.onclose = null;
+      this.socket.onerror = null;
+      this.socket.onmessage = null;
+      this.socket.onopen = null;
+      
+      // Close the connection
       this.socket.close();
       this.socket = null;
+      
+      // Broadcast local disconnect event for cleanup
+      this.dispatchEvent('player_left', { player_id: this.playerId });
+      
       this.playerId = null;
     }
   }

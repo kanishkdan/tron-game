@@ -759,55 +759,84 @@ export class LightCycle {
             this.bikeLight.dispose();
         }
         
-        // Remove light trails
-        if (this.trailLine) {
-            if (this.trailLine.parent) {
-                this.trailLine.parent.remove(this.trailLine);
-            }
-            this.trailLine = null;
-        }
+        // Clean up all trails completely
+        this.cleanupTrails();
         
         // Remove bike model and dispose of resources
         if (this.modelContainer) {
             // Dispose all materials and geometries in the model
             this.modelContainer.traverse((object) => {
                 if (object instanceof THREE.Mesh) {
-                    if (object.geometry) {
+                    if (object.geometry && !object.geometry.isSharedBufferGeometry) {
                         object.geometry.dispose();
                     }
                     if (object.material) {
                         if (Array.isArray(object.material)) {
-                            object.material.forEach(material => material.dispose());
-                        } else {
+                            object.material.forEach(material => {
+                                if (!this.useSharedResources) {
+                                    material.dispose();
+                                }
+                            });
+                        } else if (!this.useSharedResources) {
                             object.material.dispose();
                         }
                     }
                 }
             });
             
+            // Remove from scene
             if (this.modelContainer.parent) {
                 this.modelContainer.parent.remove(this.modelContainer);
             }
         }
 
-        // Clean up trail resources
-        if (this.trailGeometry) {
-            this.trailGeometry.dispose();
-            this.trailGeometry = null;
-        }
-        
-        if (this.trailMaterial) {
-            this.trailMaterial.dispose();
-            this.trailMaterial = null;
-        }
-        
         // Clear trail points array
         this.trailPoints = [];
+        this.lastTrailPoint = null;
         
         // Remove physics body from physics world
-        if (this.body.world) {
-            this.body.world.removeBody(this.body);
+        if (this.body && this.body.world) {
+            try {
+                this.body.world.removeBody(this.body);
+            } catch (e) {
+                console.error("Error removing physics body:", e);
+            }
         }
+    }
+
+    // Enhanced trail cleanup method with complete removal
+    cleanupTrails(): void {
+        if (this.trailLine) {
+            // First remove from scene
+            if (this.trailLine.parent) {
+                this.trailLine.parent.remove(this.trailLine);
+            }
+            
+            // Dispose geometry
+            if (this.trailGeometry) {
+                // Clear any attributes to ensure no memory leaks
+                this.trailGeometry.deleteAttribute('position');
+                this.trailGeometry.deleteAttribute('normal');
+                if (this.trailGeometry.index) {
+                    this.trailGeometry.setIndex(null);
+                }
+                this.trailGeometry.dispose();
+                this.trailGeometry = null;
+            }
+            
+            // Dispose material
+            if (this.trailMaterial) {
+                this.trailMaterial.dispose();
+                this.trailMaterial = null;
+            }
+            
+            // Clear reference
+            this.trailLine = null;
+        }
+        
+        // Clear all trail points
+        this.trailPoints = [];
+        this.lastTrailPoint = null;
     }
 
     // Add getter for trail points (for minimap)
@@ -1080,20 +1109,36 @@ export class LightCycle {
             ));
     }
 
-    // Add cleanup method for trails
-    cleanupTrails(): void {
-        if (this.trailLine) {
-            if (this.trailLine.parent) {
-                this.trailLine.parent.remove(this.trailLine);
-            }
-            if (this.trailGeometry) {
-                this.trailGeometry.dispose();
-            }
-            if (this.trailMaterial) {
-                this.trailMaterial.dispose();
-            }
-            this.trailLine = null;
+    // Static method to clean up shared resources when no longer needed
+    public static cleanupSharedResources(): void {
+        if (LightCycle.sharedModels && LightCycle.sharedModels.size > 0) {
+            LightCycle.sharedModels.forEach((model) => {
+                model.traverse((object) => {
+                    if (object instanceof THREE.Mesh) {
+                        if (object.geometry) {
+                            object.geometry.dispose();
+                        }
+                        if (object.material) {
+                            if (Array.isArray(object.material)) {
+                                object.material.forEach(material => material.dispose());
+                            } else {
+                                object.material.dispose();
+                            }
+                        }
+                    }
+                });
+            });
+            LightCycle.sharedModels.clear();
         }
-        this.trailPoints = [];
+        
+        if (LightCycle.sharedMaterials && LightCycle.sharedMaterials.size > 0) {
+            LightCycle.sharedMaterials.forEach((material) => {
+                material.dispose();
+            });
+            LightCycle.sharedMaterials.clear();
+        }
+        
+        LightCycle.sharedModelGeometry = null;
+        LightCycle.resourcesScene = null;
     }
 } 
