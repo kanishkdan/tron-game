@@ -62,14 +62,13 @@ const PlayersOnline: React.FC = () => {
     window.addEventListener('player_joined', handlePlayerJoined);
     window.addEventListener('player_left', handlePlayerLeft);
 
-    // Set up polling from server for real-time updates and sync
+    // Only set up API polling without other conflicting sources
     const fetchPlayerCount = async () => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // Shorter timeout (2 seconds)
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        console.log(`Fetching player count from: ${apiUrl}/api/player-count`);
         
         const response = await fetch(
           `${apiUrl}/api/player-count`, 
@@ -82,11 +81,13 @@ const PlayersOnline: React.FC = () => {
           const data = await response.json();
           console.log(`API player count: ${data.count}`);
           
-          // Always update from the server
-          setPlayerCount(Math.max(1, data.count)); // Always keep at least 1 player
+          // Only update if the count is different to avoid flicker
+          if (data.count !== countRef.current) {
+            setPlayerCount(Math.max(1, data.count));
+          }
           
           setIsConnected(true);
-          retryCount.current = 0; // Reset retry count on success
+          retryCount.current = 0;
         } else {
           console.error(`Error fetching player count: ${response.status} ${response.statusText}`);
           handleFetchError();
@@ -98,7 +99,6 @@ const PlayersOnline: React.FC = () => {
     };
 
     const handleFetchError = () => {
-      // Only switch to disconnected state after multiple retry failures
       retryCount.current += 1;
       if (retryCount.current >= MAX_RETRIES) {
         setIsConnected(false);
@@ -108,7 +108,7 @@ const PlayersOnline: React.FC = () => {
     // Initial fetch
     fetchPlayerCount();
 
-    // Set up polling interval
+    // Set up polling interval - make it more frequent to catch changes
     const interval = setInterval(fetchPlayerCount, isConnected ? POLL_INTERVAL : RETRY_INTERVAL);
     
     return () => {
@@ -116,7 +116,7 @@ const PlayersOnline: React.FC = () => {
       window.removeEventListener('player_joined', handlePlayerJoined);
       window.removeEventListener('player_left', handlePlayerLeft);
     };
-  }, [gameState, isConnected]);
+  }, [gameState, isConnected, POLL_INTERVAL, RETRY_INTERVAL]);
 
   return (
     <div className="players-online">

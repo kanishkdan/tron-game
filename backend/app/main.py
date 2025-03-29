@@ -238,6 +238,25 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                         "data": {"player_id": player_id}
                     })
                 
+                # Handle player kill events
+                elif message["type"] == "player_kill":
+                    killer = message["data"].get("killer", "Unknown")
+                    victim = message["data"].get("victim", "Unknown")
+                    # Extract just the player names, removing any ID suffixes
+                    killer_name = killer.split('-')[0] if '-' in killer else killer
+                    victim_name = victim.split('-')[0] if '-' in victim else victim
+                    
+                    print(f"Kill event: {killer_name} killed {victim_name}")
+                    
+                    # Broadcast kill event to all players
+                    await broadcast({
+                        "type": "player_kill",
+                        "data": {
+                            "killer": killer_name,
+                            "victim": victim_name
+                        }
+                    })
+                
                 # Handle explicit player disconnect
                 elif message["type"] == "player_disconnect":
                     print(f"Player {player_id} sent explicit disconnect")
@@ -326,7 +345,11 @@ async def add_initial_bots():
 @app.get("/api/player-count")
 async def get_player_count():
     """Get the current player count"""
-    total_players = len(active_connections) + len(game_state.bots)
+    # Count real players and bots
+    real_players = len(active_connections)
+    bot_players = len(game_state.bots)
+    total_players = real_players + bot_players
+    print(f"Player count requested: real={real_players}, bots={bot_players}, total={total_players}")
     return {"count": total_players}
 
 if __name__ == "__main__":

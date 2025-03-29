@@ -21,7 +21,7 @@ export type Player = {
 };
 
 export type GameEvent = {
-  type: 'game_state' | 'player_joined' | 'player_left' | 'player_moved' | 'player_eliminated';
+  type: 'game_state' | 'player_joined' | 'player_left' | 'player_moved' | 'player_eliminated' | 'player_kill';
   data: any;
 };
 
@@ -311,6 +311,20 @@ export class GameClient {
         data: {
           player_id: this.playerId,
           position
+        }
+      }));
+    }
+  }
+
+  // Send kill event to the server
+  reportKill(killer: string, victim: string) {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN && this.playerId) {
+      console.log(`Reporting kill: ${killer} killed ${victim}`);
+      this.socket.send(JSON.stringify({
+        type: 'player_kill',
+        data: {
+          killer: killer,
+          victim: victim
         }
       }));
     }

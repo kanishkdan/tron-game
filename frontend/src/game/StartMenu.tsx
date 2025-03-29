@@ -240,7 +240,7 @@ const StartMenu: React.FC<StartMenuProps> = ({ onStart }) => {
         </CompetitionInfo> */}
         
         <Footer>
-          Made with ❤️ by <a href="https://x.com/kanishk_razdan" target="_blank" rel="noopener noreferrer">Kanishk Razdan</a>
+          Made with vibes by <a href="https://x.com/kanishk_razdan" target="_blank" rel="noopener noreferrer">this guy</a>
         </Footer>
       </MenuContent>
     </MenuContainer>

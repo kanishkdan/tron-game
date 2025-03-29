@@ -60,15 +60,14 @@ export const GameUI = ({ gameStarted = false }: GameUIProps) => {
           Players Online: {playerCount}
         </div>
       </div>
-      {gameStarted && (
-        <MobileControls
-          onLeftPress={handleLeftPress}
-          onRightPress={handleRightPress}
-          onLeftRelease={handleLeftRelease}
-          onRightRelease={handleRightRelease}
-          onJumpPress={handleJumpPress}
-        />
-      )}
+      {/* Always render mobile controls, component handles visibility internally */}
+      <MobileControls
+        onLeftPress={handleLeftPress}
+        onRightPress={handleRightPress}
+        onLeftRelease={handleLeftRelease}
+        onRightRelease={handleRightRelease}
+        onJumpPress={handleJumpPress}
+      />
     </div>
   );
 }; 

@@ -7,16 +7,28 @@ const ControlsContainer = styled.div`
   left: 20px;
   display: flex;
   gap: 20px;
-  z-index: 1000;
+  z-index: 1001;
   pointer-events: none;
+
+  display: none;
+  
+  @media (max-width: 768px) {
+    display: flex;
+  }
 `;
 
 const JumpButtonContainer = styled.div`
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 1000;
+  z-index: 1001;
   pointer-events: none;
+
+  display: none;
+  
+  @media (max-width: 768px) {
+    display: block;
+  }
 `;
 
 const ControlButton = styled.button<{ $isActive?: boolean }>`
@@ -33,15 +45,11 @@ const ControlButton = styled.button<{ $isActive?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 10px rgba(15, 190, 242, 0.2);
+  box-shadow: 0 0 10px rgba(15, 190, 242, 0.5), 0 0 20px rgba(15, 190, 242, 0.3);
 
   &:active {
     background: rgba(15, 190, 242, 0.4);
     transform: scale(0.95);
-  }
-
-  @media (min-width: 768px) {
-    display: none;
   }
 `;
 
@@ -49,7 +57,7 @@ const JumpButton = styled(ControlButton)`
   background: ${props => props.$isActive ? 'rgba(255, 0, 68, 0.3)' : 'rgba(255, 0, 68, 0.1)'};
   border-color: #ff0044;
   color: #ff0044;
-  box-shadow: 0 0 10px rgba(255, 0, 68, 0.2);
+  box-shadow: 0 0 10px rgba(255, 0, 68, 0.5), 0 0 20px rgba(255, 0, 68, 0.3);
 
   &:active {
     background: rgba(255, 0, 68, 0.4);
@@ -74,6 +82,20 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   const [isLeftPressed, setIsLeftPressed] = useState(false);
   const [isRightPressed, setIsRightPressed] = useState(false);
   const [isJumpPressed, setIsJumpPressed] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobileDevice(window.innerWidth <= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
 
   const handleLeftPress = () => {
     setIsLeftPressed(true);
@@ -100,8 +122,9 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
     onJumpPress();
   };
 
-  // Handle touch events for better mobile support
   useEffect(() => {
+    if (!isMobileDevice) return;
+    
     const handleTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
       const target = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -141,7 +164,9 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, []);
+  }, [isMobileDevice]);
+
+  if (!isMobileDevice) return null;
 
   return (
     <>

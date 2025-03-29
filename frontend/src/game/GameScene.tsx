@@ -281,9 +281,25 @@ export const GameScene = () => {
 
     // Handle kill events
     const handleKill = (killer: string, victim: string) => {
+        // Clean up any IDs from the names
+        const cleanKiller = killer.split('-')[0];
+        const cleanVictim = victim.split('-')[0];
+        
+        console.log(`Kill event: ${cleanKiller} killed ${cleanVictim}`);
+        
+        // Report kill to server to broadcast to all players
+        if (gameClient.current) {
+            gameClient.current.reportKill(cleanKiller, cleanVictim);
+        }
+        
+        // Update local kill feed
         setKillMessages(prev => {
             // Add new message
-            const newMessages = [...prev, { killer, victim, timestamp: Date.now() }];
+            const newMessages = [...prev, { 
+                killer: cleanKiller, 
+                victim: cleanVictim, 
+                timestamp: Date.now() 
+            }];
             // Keep only last 5 messages
             return newMessages.slice(-5);
         });
