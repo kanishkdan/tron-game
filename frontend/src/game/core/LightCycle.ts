@@ -1136,4 +1136,11 @@ export class LightCycle {
         LightCycle.sharedModelGeometry = null;
         LightCycle.resourcesScene = null;
     }
+
+    // Add new public method to hide trails immediately
+    hideTrailsImmediately(): void {
+        if (this.trailLine) {
+            this.trailLine.visible = false;
+        }
+    }
 } 

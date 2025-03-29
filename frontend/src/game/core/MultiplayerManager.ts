@@ -127,20 +127,10 @@ export class MultiplayerManager {
         const cycle = this.remotePlayers.get(playerId);
         if (cycle) {
             try {
-                // Ensure trails are cleaned up first
-                cycle.cleanupTrails();
+                // IMMEDIATE ACTIONS: Hide trails and remove physics
+                cycle.hideTrailsImmediately();  // Use the new public method
                 
-                // Get objects that need to be removed
-                const trailObjects = cycle.getLightTrail();
-                if (trailObjects.length > 0) {
-                    trailObjects.forEach(obj => {
-                        if (obj.parent) {
-                            obj.parent.remove(obj);
-                        }
-                    });
-                }
-                
-                // Remove physics body safely
+                // Immediately remove physics body
                 const physicsBody = cycle.getPhysicsBody();
                 if (physicsBody && physicsBody.world) {
                     try {
@@ -149,20 +139,28 @@ export class MultiplayerManager {
                         console.error(`Error removing physics body for ${playerId}:`, e);
                     }
                 }
-                
-                // Dispose all cycle resources
-                cycle.dispose();
+
+                // Remove from maps immediately
+                this.remotePlayers.delete(playerId);
+                this.remotePositions.delete(playerId);
+                this.remoteRotations.delete(playerId);
+                this.enemyPositions.delete(playerId);
+                this.remoteLODLevels.delete(playerId);
+                this.playerStarted.delete(playerId);
+
+                // Schedule full cleanup for the next frame
+                requestAnimationFrame(() => {
+                    try {
+                        // Full cleanup in background
+                        cycle.cleanupTrails();
+                        cycle.dispose();
+                    } catch (e) {
+                        console.error(`Error during background cleanup for ${playerId}:`, e);
+                    }
+                });
             } catch (e) {
                 console.error(`Error during cycle cleanup for ${playerId}:`, e);
             }
-            
-            // Delete from all maps to ensure complete removal
-            this.remotePlayers.delete(playerId);
-            this.remotePositions.delete(playerId);
-            this.remoteRotations.delete(playerId);
-            this.enemyPositions.delete(playerId);
-            this.remoteLODLevels.delete(playerId);
-            this.playerStarted.delete(playerId);
         }
     }
 
