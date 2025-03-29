@@ -24,3 +24,9 @@ wheels/
 .venv
 venv/
 ENV/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
