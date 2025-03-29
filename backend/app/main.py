@@ -257,6 +257,24 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                         }
                     })
                 
+                # Handle chat messages
+                elif message["type"] == "chat_message":
+                    player_id = message["data"].get("player_id", "Unknown")
+                    player_name = message["data"].get("player_name", "Unknown")
+                    chat_message = message["data"].get("message", "")
+                    
+                    print(f"Chat message from {player_name}: {chat_message}")
+                    
+                    # Broadcast chat message to all players
+                    await broadcast({
+                        "type": "chat_message",
+                        "data": {
+                            "player_id": player_id,
+                            "player_name": player_name,
+                            "message": chat_message
+                        }
+                    })
+                
                 # Handle explicit player disconnect
                 elif message["type"] == "player_disconnect":
                     print(f"Player {player_id} sent explicit disconnect")

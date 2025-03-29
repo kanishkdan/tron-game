@@ -21,7 +21,7 @@ export type Player = {
 };
 
 export type GameEvent = {
-  type: 'game_state' | 'player_joined' | 'player_left' | 'player_moved' | 'player_eliminated' | 'player_kill';
+  type: 'game_state' | 'player_joined' | 'player_left' | 'player_moved' | 'player_eliminated' | 'player_kill' | 'chat_message';
   data: any;
 };
 
@@ -98,10 +98,21 @@ export class GameClient {
           this.socket = null;
         }
 
+        // Create a WebSocket with explicit connection timeout
+        const connectTimeout = setTimeout(() => {
+          if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
+            console.log("[DEBUG] WebSocket connection timeout");
+            this.socket.close();
+            this.socket = null;
+            reject(new Error("Connection timeout"));
+          }
+        }, 10000); // 10 second timeout
+
         this.socket = new WebSocket(`${this.serverUrl}/ws/${this.playerId}`);
 
         this.socket.onopen = () => {
           console.log('[DEBUG] WebSocket connection established successfully');
+          clearTimeout(connectTimeout);
           this.reconnectAttempts = 0;
           this.reconnectTimeout = 1000;
           this.lastConnectTime = performance.now();
@@ -109,13 +120,19 @@ export class GameClient {
         };
 
         this.socket.onclose = (event) => {
+          clearTimeout(connectTimeout);
           console.log('WebSocket closed:', event);
           this.handleDisconnect();
         };
 
         this.socket.onerror = (error) => {
+          clearTimeout(connectTimeout);
           console.error('WebSocket error:', error);
-          reject(error);
+          
+          // Only reject if we haven't connected yet
+          if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
+            reject(error);
+          }
         };
 
         this.socket.onmessage = (event) => {
@@ -318,13 +335,23 @@ export class GameClient {
 
   // Send kill event to the server
   reportKill(killer: string, victim: string) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN && this.playerId) {
-      console.log(`Reporting kill: ${killer} killed ${victim}`);
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({
         type: 'player_kill',
-        data: {
-          killer: killer,
-          victim: victim
+        data: { killer, victim }
+      }));
+    }
+  }
+
+  sendChat(message: string) {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN && this.playerId) {
+      const playerName = this.playerId.split('-')[0]; // Extract player name from ID
+      this.socket.send(JSON.stringify({
+        type: 'chat_message',
+        data: { 
+          player_id: this.playerId,
+          player_name: playerName,
+          message: message
         }
       }));
     }

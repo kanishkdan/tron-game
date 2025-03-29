@@ -14,6 +14,7 @@ import { MultiplayerManager } from './core/MultiplayerManager';
 import { TrailActivationDisplay } from '../components/TrailActivationDisplay';
 import { PerformanceDisplay } from '../components/PerformanceDisplay';
 import { KillFeed } from '../components/KillFeed';
+import { ChatBox } from '../components/ChatBox';
 import { GameUI } from '../components/GameUI';
 
 // Lighting component to handle all scene lighting
@@ -81,7 +82,7 @@ const GameRenderer = ({
         
         // Initialize multiplayer manager
         multiplayerManager.current = new MultiplayerManager(scene, world.current);
-        multiplayerManager.current.setLocalPlayerId(gameClient.getPlayerId() || '');
+        multiplayerManager.current.setLocalPlayerId(gameClient.getPlayerId() || '', '');
         
         // Link multiplayer manager with game if both exist
         if (game && multiplayerManager.current) {
@@ -98,8 +99,8 @@ const GameRenderer = ({
             console.log('Player left:', data.player_id);
             multiplayerManager.current?.removePlayer(data.player_id);
             // Also remove from game if it exists there
-            if (game.current) {
-                const players = game.current.getPlayers();
+            if (game) {
+                const players = game.getPlayers();
                 if (players.has(data.player_id)) {
                     const cycle = players.get(data.player_id);
                     if (cycle) {
@@ -205,6 +206,8 @@ export const GameScene = () => {
     const [arenaSize, setArenaSize] = useState(500);
     const [trailActivationEvents, setTrailActivationEvents] = useState<Map<string, number>>(new Map());
     const [killMessages, setKillMessages] = useState<Array<{ killer: string; victim: string; timestamp: number }>>([]);
+    const [chatMessages, setChatMessages] = useState<Array<{ player_name: string; message: string; timestamp: number }>>([]);
+    const [isChatOpen, setIsChatOpen] = useState(false);
     const scene = useRef<THREE.Scene>();
     const game = useRef<TronGame>();
     const gameClient = useRef<GameClient>();
@@ -258,6 +261,28 @@ export const GameScene = () => {
                 }, 5000);
             });
             
+            // Add event listener for chat messages
+            gameClient.current.on('chat_message', (data) => {
+                console.log(`Received chat message from ${data.player_name}: ${data.message}`);
+                
+                // Add to chat feed
+                setChatMessages(prev => {
+                    const newMessages = [...prev, {
+                        player_name: data.player_name,
+                        message: data.message,
+                        timestamp: Date.now()
+                    }];
+                    return newMessages.slice(-10); // Keep only last 10 messages
+                });
+                
+                // Automatically remove old messages from state after 5 seconds
+                setTimeout(() => {
+                    setChatMessages(prev => 
+                        prev.filter(msg => Date.now() - msg.timestamp < 5000)
+                    );
+                }, 5000);
+            });
+            
             if (scene.current) {
                 const physicsWorld = new CANNON.World();
                 physicsWorld.gravity.set(0, -19.81, 0);
@@ -276,7 +301,7 @@ export const GameScene = () => {
                 
                 // Create and link multiplayer manager
                 const mpManager = new MultiplayerManager(scene.current, physicsWorld);
-                mpManager.setLocalPlayerId(gameClient.current.getPlayerId() || '', name);
+                mpManager.setLocalPlayerId(gameClient.current.getPlayerId() || '', '');
                 game.current.setMultiplayerManager(mpManager);
                 multiplayerManager.current = mpManager;
                 
@@ -315,6 +340,28 @@ export const GameScene = () => {
         // Remove the local kill feed update - only rely on the server broadcast
         // to ensure all players see the same messages
     };
+
+    const handleSendChatMessage = (message: string) => {
+        if (gameClient.current) {
+            gameClient.current.sendChat(message);
+        }
+    };
+
+    // Handle keyboard events for chat
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Only activate chat if game is started and chat is not already open
+            if (gameStarted && !isChatOpen && e.key === 't' && !e.repeat) {
+                e.preventDefault();
+                setIsChatOpen(true);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [gameStarted, isChatOpen]);
 
     useEffect(() => {
         return () => {
@@ -359,7 +406,11 @@ export const GameScene = () => {
                 </Canvas>
             </KeyboardControls>
             {!gameStarted && <StartMenu onStart={handleGameStart} />}
-            <GameUI gameStarted={gameStarted} />
+            <GameUI 
+                gameStarted={gameStarted} 
+                isChatOpen={isChatOpen}
+                onOpenChat={() => setIsChatOpen(true)}
+            />
             {gameStarted && (
                 <>
                     <Minimap 
@@ -370,6 +421,12 @@ export const GameScene = () => {
                     />
                     <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />
                     <KillFeed messages={killMessages} />
+                    <ChatBox
+                        messages={chatMessages}
+                        onSendMessage={handleSendChatMessage}
+                        isOpen={isChatOpen}
+                        onClose={() => setIsChatOpen(false)}
+                    />
                 </>
             )}
         </>
