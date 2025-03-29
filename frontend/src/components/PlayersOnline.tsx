@@ -30,8 +30,8 @@ const PlayersOnline: React.FC = () => {
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const retryCount = useRef<number>(0);
   const MAX_RETRIES = 3;
-  const POLL_INTERVAL = 1000; // More frequent polling (1 second)
-  const RETRY_INTERVAL = 3000; // Retry faster after failures (3 seconds)
+  const POLL_INTERVAL = 5000; // More frequent polling (1 second)
+  const RETRY_INTERVAL = 6000; // Retry faster after failures (3 seconds)
   const countRef = useRef<number>(playerCount); // Initialize ref with initial count
 
   // Update countRef whenever playerCount changes

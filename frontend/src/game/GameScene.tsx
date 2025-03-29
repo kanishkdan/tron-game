@@ -238,6 +238,26 @@ export const GameScene = () => {
             setPlayerName(name);
             setGameStarted(true);
             
+            // Add event listener for kill events
+            gameClient.current.on('player_kill', (data) => {
+                console.log(`Received kill event from server: ${data.killer} killed ${data.victim}`);
+                
+                // Add to kill feed
+                setKillMessages(prev => {
+                    const newMessages = [...prev, { 
+                        killer: data.killer, 
+                        victim: data.victim,
+                        timestamp: Date.now() 
+                    }];
+                    return newMessages.slice(-5); // Keep only last 5 messages
+                });
+                
+                // Remove old messages after 5 seconds
+                setTimeout(() => {
+                    setKillMessages(prev => prev.filter(msg => Date.now() - msg.timestamp < 5000));
+                }, 5000);
+            });
+            
             if (scene.current) {
                 const physicsWorld = new CANNON.World();
                 physicsWorld.gravity.set(0, -19.81, 0);
@@ -292,22 +312,8 @@ export const GameScene = () => {
             gameClient.current.reportKill(cleanKiller, cleanVictim);
         }
         
-        // Update local kill feed
-        setKillMessages(prev => {
-            // Add new message
-            const newMessages = [...prev, { 
-                killer: cleanKiller, 
-                victim: cleanVictim, 
-                timestamp: Date.now() 
-            }];
-            // Keep only last 5 messages
-            return newMessages.slice(-5);
-        });
-
-        // Remove old messages after 5 seconds
-        setTimeout(() => {
-            setKillMessages(prev => prev.filter(msg => Date.now() - msg.timestamp < 5000));
-        }, 5000);
+        // Remove the local kill feed update - only rely on the server broadcast
+        // to ensure all players see the same messages
     };
 
     useEffect(() => {
