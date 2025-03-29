@@ -85,8 +85,8 @@ const PlayersOnline: React.FC = () => {
         } else {
           // Default URLs based on environment
           apiUrl = isLocalhost 
-            ? 'http://localhost:8000'  // Use port 8080 for local development
-            : 'https://tron-backend-production.up.railway.app';
+            ? 'http://localhost:8000'  // Local development port
+            : 'https://tron-backend-production.up.railway.app:8080'; // Production with port 8080
         }
         
         console.log(`[PlayersOnline] Environment: ${isLocalhost ? 'local' : 'production'}`);

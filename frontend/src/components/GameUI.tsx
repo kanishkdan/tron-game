@@ -5,21 +5,20 @@ import { useEffect, useState } from 'react';
 
 interface GameUIProps {
   gameStarted?: boolean;
+  forceMobile?: boolean; // For debugging
 }
 
-export const GameUI = ({ gameStarted = false }: GameUIProps) => {
+export const GameUI = ({ gameStarted = false, forceMobile = false }: GameUIProps) => {
   const { gameState, localPlayer } = useGameStore();
   const [playerCount, setPlayerCount] = useState<number>(0);
 
-  // Effect to update player count whenever gameState changes
+  // Update player count whenever gameState changes
   useEffect(() => {
     if (gameState && gameState.player_count !== undefined) {
       setPlayerCount(gameState.player_count);
       console.log('Player count updated:', gameState.player_count);
     }
   }, [gameState]);
-
-  if (!gameState) return null;
 
   const handleLeftPress = () => {
     // Dispatch a custom event that LightCycle will listen for
@@ -44,29 +43,33 @@ export const GameUI = ({ gameStarted = false }: GameUIProps) => {
 
   return (
     <div className="game-ui">
-      <div className="game-info">
-        <div className="player-count" style={{ 
-          color: '#0fbef2', 
-          fontSize: '18px',
-          fontWeight: 'bold',
-          textShadow: '0 0 5px #0fbef2, 0 0 10px #0fbef2',
-          padding: '8px',
-          border: '1px solid #0fbef2',
-          borderRadius: '4px',
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          marginBottom: '10px',
-          zIndex: 1001
-        }}>
-          Players Online: {playerCount}
+      {gameState && (
+        <div className="game-info">
+          <div className="player-count" style={{ 
+            color: '#0fbef2', 
+            fontSize: '18px',
+            fontWeight: 'bold',
+            textShadow: '0 0 5px #0fbef2, 0 0 10px #0fbef2',
+            padding: '8px',
+            border: '1px solid #0fbef2',
+            borderRadius: '4px',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            marginBottom: '10px',
+            zIndex: 1001
+          }}>
+            Players Online: {playerCount}
+          </div>
         </div>
-      </div>
-      {/* Always render mobile controls, component handles visibility internally */}
+      )}
+      
+      {/* Always render mobile controls, regardless of gameState */}
       <MobileControls
         onLeftPress={handleLeftPress}
         onRightPress={handleRightPress}
         onLeftRelease={handleLeftRelease}
         onRightRelease={handleRightRelease}
         onJumpPress={handleJumpPress}
+        forceMobile={forceMobile}
       />
     </div>
   );

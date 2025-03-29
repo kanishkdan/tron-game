@@ -65,6 +65,7 @@ interface MobileControlsProps {
   onLeftRelease: () => void;
   onRightRelease: () => void;
   onJumpPress: () => void;
+  forceMobile?: boolean; // Optional prop to force mobile controls
 }
 
 export const MobileControls: React.FC<MobileControlsProps> = ({
@@ -72,17 +73,19 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   onRightPress,
   onLeftRelease,
   onRightRelease,
-  onJumpPress
+  onJumpPress,
+  forceMobile = false
 }) => {
   const [isLeftPressed, setIsLeftPressed] = useState(false);
   const [isRightPressed, setIsRightPressed] = useState(false);
   const [isJumpPressed, setIsJumpPressed] = useState(false);
-  const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(forceMobile);
 
   useEffect(() => {
     const checkMobile = () => {
       // Check for touch capability, mobile width, or coarse pointer
       const isMobile = 
+        forceMobile || // Force mobile controls if forceMobile is true
         'ontouchstart' in window || 
         navigator.maxTouchPoints > 0 ||
         window.innerWidth <= 768 ||
@@ -91,6 +94,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
       setIsMobileDevice(isMobile);
       console.log('[MobileControls] Device detection:', { 
         isMobile,
+        forceMobile,
         width: window.innerWidth,
         touchPoints: navigator.maxTouchPoints,
         hasTouch: 'ontouchstart' in window,
@@ -108,7 +112,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
       window.removeEventListener('resize', checkMobile);
       window.removeEventListener('orientationchange', checkMobile);
     };
-  }, []);
+  }, [forceMobile]);
 
   const handleLeftPress = () => {
     setIsLeftPressed(true);
@@ -178,6 +182,30 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
       window.removeEventListener('touchend', handleTouchEnd);
     };
   }, [isMobileDevice]);
+
+  // Allow debugging by showing in any mode
+  if (!isMobileDevice && !forceMobile) {
+    // Add a small debug indicator that can be clicked to force show controls
+    return (
+      <div 
+        style={{
+          position: 'fixed',
+          bottom: '5px',
+          left: '5px',
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          color: '#0fbef2',
+          padding: '5px',
+          borderRadius: '4px',
+          fontSize: '10px',
+          zIndex: 1001,
+          cursor: 'pointer'
+        }}
+        onClick={() => setIsMobileDevice(true)}
+      >
+        🎮
+      </div>
+    );
+  }
 
   if (!isMobileDevice) return null;
 
