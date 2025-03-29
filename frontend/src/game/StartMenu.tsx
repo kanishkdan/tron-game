@@ -89,6 +89,7 @@ const Title = styled.h1`
   text-transform: uppercase;
   letter-spacing: 4px;
   text-shadow: 0 0 10px #0fbef2;
+  font-family: 'Tr2n', 'Orbitron', sans-serif;
 `;
 
 const Input = styled.input`
@@ -159,6 +160,45 @@ const Instructions = styled.p`
   line-height: 1.5;
 `;
 
+const CompetitionInfo = styled.div`
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(15, 190, 242, 0.3);
+  font-size: 0.85em;
+  color: rgba(15, 190, 242, 0.8);
+  line-height: 1.6;
+`;
+
+const Footer = styled.div`
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(15, 190, 242, 0.3);
+  font-size: 0.85em;
+  color: rgba(15, 190, 242, 0.8);
+  line-height: 1.6;
+  
+  a {
+    color: #0fbef2;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 2px;
+    
+    &:hover {
+      border-bottom: 1px solid #0fbef2;
+      text-shadow: 0 0 5px #0fbef2;
+    }
+  }
+`;
+
+const SocialLinks = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 20px;
+  margin-bottom: 10px;
+`;
+
 interface StartMenuProps {
   onStart: (playerName: string) => void;
 }
@@ -182,17 +222,26 @@ const StartMenu: React.FC<StartMenuProps> = ({ onStart }) => {
             type="text"
             value={playerName}
             onChange={(e) => setPlayerName(e.target.value)}
-            placeholder="Enter Program ID"
+            placeholder="Enter Name"
             maxLength={15}
             required
           />
           <StartButton type="submit">Enter The Grid</StartButton>
         </form>
         <Instructions>
-          Use arrow keys or WASD to control your light cycle.<br />
-          Leave your light trail to eliminate opponents.<br />
-          Survive in the Grid.
+          Use ⬅︎➡︎ or AD to control your light cycle. Press SPACEBAR to jump.<br />
+          Use your light trail to eliminate opponents.<br />
         </Instructions>
+        
+        {/* <CompetitionInfo>
+          Built for the 2025 Vibe Coding Competition<br/>
+          Organised by Pieter Levels (Levelsio)<br/>
+          Powered by Bolt
+        </CompetitionInfo> */}
+        
+        <Footer>
+          Made with ❤️ by <a href="https://x.com/kanishk_razdan" target="_blank" rel="noopener noreferrer">Kanishk Razdan</a>
+        </Footer>
       </MenuContent>
     </MenuContainer>
   );

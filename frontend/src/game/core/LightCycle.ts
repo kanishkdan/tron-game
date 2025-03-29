@@ -62,8 +62,8 @@ export class LightCycle {
     private currentTrailLength = 100;
     private totalTrailDistance = 0;
     private onCollision?: () => void; // Callback for collision handling
-    private readonly BASE_TRAIL_HEIGHT = 3.0;
-    private readonly TRAIL_WIDTH = 0.25;
+    private readonly BASE_TRAIL_HEIGHT = 2.8;
+    private readonly TRAIL_WIDTH = 0.15;
     private readonly COLLISION_THRESHOLD = 2.5;
     private readonly JUMP_FORCE = 30;
     private readonly JUMP_COOLDOWN = 3000; // 1 second cooldown
@@ -612,8 +612,8 @@ export class LightCycle {
             segmentPerpendicular = new THREE.Vector3(-segmentDirection.z, 0, segmentDirection.x).normalize();
             
             // Calculate the bottom height for this segment
-            const bottomHeight = 0.1;  // Just slightly above the ground
-            const topHeight = 4.0;     // Taller, more visible trail
+            const bottomHeight = 0.0;  // Just slightly above the ground
+            const topHeight = this.BASE_TRAIL_HEIGHT;     // Taller, more visible trail
             
             // Create the 4 corners of the ribbon segment
             // Top left

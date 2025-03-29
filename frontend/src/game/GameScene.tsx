@@ -14,6 +14,7 @@ import { MultiplayerManager } from './core/MultiplayerManager';
 import { TrailActivationDisplay } from '../components/TrailActivationDisplay';
 import { PerformanceDisplay } from '../components/PerformanceDisplay';
 import { KillFeed } from '../components/KillFeed';
+import { GameUI } from '../components/GameUI';
 
 // Lighting component to handle all scene lighting
 const SceneLighting = () => {
@@ -346,6 +347,7 @@ export const GameScene = () => {
                     />
                     <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />
                     <KillFeed messages={killMessages} />
+                    <GameUI gameStarted={gameStarted} />
                 </>
             )}
         </>

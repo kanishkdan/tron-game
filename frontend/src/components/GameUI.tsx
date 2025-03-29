@@ -2,7 +2,11 @@ import { useGameStore } from '../game/gameStore';
 import { MobileControls } from './MobileControls';
 import './GameUI.css';
 
-export const GameUI = () => {
+interface GameUIProps {
+  gameStarted: boolean;
+}
+
+export const GameUI = ({ gameStarted }: GameUIProps) => {
   const { gameState, localPlayer } = useGameStore();
 
   if (!gameState) return null;
@@ -54,13 +58,15 @@ export const GameUI = () => {
         </div>
       )}
 
-      <MobileControls
-        onLeftPress={handleLeftPress}
-        onRightPress={handleRightPress}
-        onLeftRelease={handleLeftRelease}
-        onRightRelease={handleRightRelease}
-        onJumpPress={handleJumpPress}
-      />
+      {gameStarted && (
+        <MobileControls
+          onLeftPress={handleLeftPress}
+          onRightPress={handleRightPress}
+          onLeftRelease={handleLeftRelease}
+          onRightRelease={handleRightRelease}
+          onJumpPress={handleJumpPress}
+        />
+      )}
     </div>
   );
 }; 
