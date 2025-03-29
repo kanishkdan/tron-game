@@ -236,29 +236,24 @@ export class LightCycle {
     setLODLevel(level: number): void {
         this.currentLODLevel = level;
         
-        // Update visibility and detail based on LOD level
         if (this.modelContainer && this.trailLine) {
-            // Model is always visible but with different detail levels
             switch (level) {
                 case LOD_HIGH:
-                    // Full detail model and effects
                     this.modelContainer.visible = true;
                     this.trailLine.visible = this.trailsActive;
                     this.bikeLight.intensity = 1.5;
                     break;
                     
                 case LOD_MEDIUM:
-                    // Medium detail: simplified trails, reduced lighting
                     this.modelContainer.visible = true;
                     this.trailLine.visible = this.trailsActive;
                     this.bikeLight.intensity = 0.7;
                     break;
                     
                 case LOD_LOW:
-                    // Low detail: no trails, minimal lighting
                     this.modelContainer.visible = true;
-                    this.trailLine.visible = false;
-                    this.bikeLight.intensity = 0;
+                    this.trailLine.visible = this.trailsActive;  // Keep trails visible
+                    this.bikeLight.intensity = 0.3;  // Reduced but not zero
                     break;
             }
         }
