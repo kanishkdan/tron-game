@@ -1,14 +1,15 @@
 import React from 'react';
 import { KeyboardControls } from '@react-three/drei';
 import { GameScene } from './game/GameScene';
-import { GameUI } from './components/GameUI';
 import { GlobalStyles } from './styles/GlobalStyles';
+import PlayersOnline from './components/PlayersOnline';
 import './App.css';
 
 const App: React.FC = () => {
   return (
     <>
       <GlobalStyles />
+      <PlayersOnline />
       <KeyboardControls
         map={[
           { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
@@ -19,7 +20,6 @@ const App: React.FC = () => {
         ]}
       >
         <GameScene />
-        <GameUI />
       </KeyboardControls>
     </>
   );

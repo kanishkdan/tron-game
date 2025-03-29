@@ -323,6 +323,12 @@ async def add_initial_bots():
     # NOTE: We can't start updates here because we don't have the broadcast function yet
     # Updates will start when first player connects
 
+@app.get("/api/player-count")
+async def get_player_count():
+    """Get the current player count"""
+    total_players = len(active_connections) + len(game_state.bots)
+    return {"count": total_players}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info") 

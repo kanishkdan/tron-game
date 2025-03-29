@@ -337,6 +337,7 @@ export const GameScene = () => {
                 </Canvas>
             </KeyboardControls>
             {!gameStarted && <StartMenu onStart={handleGameStart} />}
+            <GameUI gameStarted={gameStarted} />
             {gameStarted && (
                 <>
                     <Minimap 
@@ -347,7 +348,6 @@ export const GameScene = () => {
                     />
                     <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />
                     <KillFeed messages={killMessages} />
-                    <GameUI gameStarted={gameStarted} />
                 </>
             )}
         </>

@@ -30,31 +30,31 @@ const PlayersOnline: React.FC = () => {
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const retryCount = useRef<number>(0);
   const MAX_RETRIES = 3;
-  const POLL_INTERVAL = 2000; // More frequent polling (2 seconds)
-  const RETRY_INTERVAL = 5000; // Retry every 5 seconds after failures
+  const POLL_INTERVAL = 1000; // More frequent polling (1 second)
+  const RETRY_INTERVAL = 3000; // Retry faster after failures (3 seconds)
   const countRef = useRef<number>(playerCount); // Initialize ref with initial count
 
   // Update countRef whenever playerCount changes
   useEffect(() => {
     countRef.current = playerCount;
+    console.log("Player count updated:", playerCount);
   }, [playerCount]);
 
   useEffect(() => {
     // Update from gameState when available
     if (gameState && gameState.player_count !== undefined) {
-      // Only update if game state count is higher or significantly different
-      if (gameState.player_count > countRef.current || 
-          Math.abs(gameState.player_count - countRef.current) > 1) {
-        setPlayerCount(gameState.player_count);
-      }
+      // Always update from game state as it's the most reliable source
+      setPlayerCount(gameState.player_count);
     }
 
     // Custom event listeners for real-time player tracking
-    const handlePlayerJoined = () => {
+    const handlePlayerJoined = (e: CustomEvent<{ playerId: string }>) => {
+      console.log(`Player joined: ${e.detail.playerId}`);
       setPlayerCount(prev => prev + 1);
     };
 
-    const handlePlayerLeft = () => {
+    const handlePlayerLeft = (e: CustomEvent<{ playerId: string }>) => {
+      console.log(`Player left: ${e.detail.playerId}`);
       setPlayerCount(prev => Math.max(1, prev - 1)); // Always keep at least 1 player
     };
 
@@ -66,10 +66,13 @@ const PlayersOnline: React.FC = () => {
     const fetchPlayerCount = async () => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // Set a timeout
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // Shorter timeout (2 seconds)
+        
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        console.log(`Fetching player count from: ${apiUrl}/api/player-count`);
         
         const response = await fetch(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/player-count`, 
+          `${apiUrl}/api/player-count`, 
           { signal: controller.signal }
         );
         
@@ -77,16 +80,19 @@ const PlayersOnline: React.FC = () => {
         
         if (response.ok) {
           const data = await response.json();
-          // Only update if server count is higher or significantly different
-          if (data.count > countRef.current || Math.abs(data.count - countRef.current) > 1) {
-            setPlayerCount(Math.max(1, data.count)); // Always keep at least 1 player
-          }
+          console.log(`API player count: ${data.count}`);
+          
+          // Always update from the server
+          setPlayerCount(Math.max(1, data.count)); // Always keep at least 1 player
+          
           setIsConnected(true);
           retryCount.current = 0; // Reset retry count on success
         } else {
+          console.error(`Error fetching player count: ${response.status} ${response.statusText}`);
           handleFetchError();
         }
       } catch (error) {
+        console.error(`Error fetching player count: ${error}`);
         handleFetchError();
       }
     };

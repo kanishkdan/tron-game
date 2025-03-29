@@ -322,6 +322,19 @@ export class GameClient {
     // Inform any registered handlers
     const handlers = this.eventHandlers.get(type) || [];
     handlers.forEach(handler => handler(data));
+
+    // Dispatch DOM events for player join/leave for other components to listen to
+    if (type === 'player_joined') {
+      console.log("Dispatching player_joined event:", data.player_id);
+      window.dispatchEvent(new CustomEvent('player_joined', { 
+        detail: { playerId: data.player_id } 
+      }));
+    } else if (type === 'player_left') {
+      console.log("Dispatching player_left event:", data.player_id);
+      window.dispatchEvent(new CustomEvent('player_left', { 
+        detail: { playerId: data.player_id } 
+      }));
+    }
   }
   
   /**
@@ -330,5 +343,13 @@ export class GameClient {
   private dispatchEvent(type: string, data: any) {
     const handlers = this.eventHandlers.get(type) || [];
     handlers.forEach(handler => handler(data));
+
+    // Also dispatch DOM events for special cases
+    if (type === 'player_joined' || type === 'player_left') {
+      console.log(`Dispatching DOM event: ${type}`, data.player_id);
+      window.dispatchEvent(new CustomEvent(type, { 
+        detail: { playerId: data.player_id } 
+      }));
+    }
   }
 } 
