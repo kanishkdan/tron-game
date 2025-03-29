@@ -30,6 +30,8 @@ export class MultiplayerManager {
     private pendingRemovals: string[] = [];
     private removalTimer: number = 0;
     private playerNames: Map<string, string> = new Map();
+    private isGameStarted: boolean = false;
+    private playerStarted: Set<string> = new Set();
 
     constructor(scene: THREE.Scene, world: CANNON.World) {
         this.scene = scene;
@@ -50,6 +52,7 @@ export class MultiplayerManager {
         this.localPlayerId = playerId;
         this.localPlayerName = playerName;
         this.playerNames.set(playerId, playerName);
+        this.isGameStarted = true; // Set game as started when local player ID is set
     }
 
     setLocalPlayerPosition(position: THREE.Vector3) {
@@ -61,6 +64,12 @@ export class MultiplayerManager {
     }
 
     addPlayer(playerId: string, position?: { x: number; y: number; z: number }, playerName?: string) {
+        // Only add players when the game has started and local player ID is set
+        if (!this.isGameStarted || !this.localPlayerId) {
+            console.log("Game not started yet, skipping player addition:", playerId);
+            return;
+        }
+        
         console.log(`Adding remote player: ${playerId}`);
         
         // Skip if this is the local player
@@ -75,10 +84,19 @@ export class MultiplayerManager {
             return;
         }
 
+        // Check if this player is already tracked as started
+        if (this.playerStarted.has(playerId)) {
+            console.log(`Player ${playerId} already exists, updating instead of re-creating`);
+            if (position) {
+                this.updatePlayerPosition(playerId, position);
+            }
+            return;
+        }
+
         // Store player name
         this.playerNames.set(playerId, playerName || playerId);
 
-        // Forcefully remove any existing instance of this player first
+        // Forcefully remove any existing instance of this player first to ensure clean state
         this.forceRemovePlayer(playerId);
         
         // Ensure all maps are clean
@@ -122,6 +140,7 @@ export class MultiplayerManager {
                 
                 this.remoteRotations.set(playerId, 0);
                 this.remoteLODLevels.set(playerId, LOD_LOW);
+                this.playerStarted.add(playerId); // Mark this player as started
                 return cycle;
             } catch (error) {
                 console.error(`Error creating remote player ${playerId}:`, error);
@@ -164,6 +183,7 @@ export class MultiplayerManager {
             this.remoteRotations.delete(playerId);
             this.enemyPositions.delete(playerId);
             this.remoteLODLevels.delete(playerId);
+            this.playerStarted.delete(playerId); // Remove from started players
             
             // Remove from pending removals if it was scheduled
             const pendingIndex = this.pendingRemovals.indexOf(playerId);
@@ -201,9 +221,15 @@ export class MultiplayerManager {
                 map.delete(playerId);
             }
         });
+        
+        // Also remove from started players set
+        this.playerStarted.delete(playerId);
     }
 
     updatePlayerPosition(playerId: string, position: { x: number; y: number; z: number }, rotation?: number) {
+        // Skip updates if game hasn't started
+        if (!this.isGameStarted) return;
+        
         if (playerId === this.localPlayerId) return;
         
         if (!this.remotePlayers.has(playerId)) {
@@ -245,7 +271,8 @@ export class MultiplayerManager {
     }
 
     update(deltaTime: number) {
-        // No longer process scheduled removals since we're doing immediate removal
+        // Skip updates if game hasn't started
+        if (!this.isGameStarted) return;
         
         this.updateAccumulator += deltaTime;
         this.physicsAccumulator += deltaTime;
@@ -360,6 +387,9 @@ export class MultiplayerManager {
     }
 
     getEnemyPositions(): {id: string, position: {x: number, z: number}}[] {
+        // Only return enemy positions when the game has started
+        if (!this.isGameStarted) return [];
+        
         return Array.from(this.enemyPositions.entries()).map(([id, pos]) => ({
             id,
             position: pos
@@ -372,9 +402,12 @@ export class MultiplayerManager {
     }
 
     clear() {
-        this.remotePlayers.forEach((cycle, id) => {
+        // Make a copy of the keys to avoid modification during iteration
+        const playerIds = Array.from(this.remotePlayers.keys());
+        playerIds.forEach(id => {
             this.removePlayer(id);
         });
         this.pendingRemovals = [];
+        this.playerStarted.clear();
     }
 } 

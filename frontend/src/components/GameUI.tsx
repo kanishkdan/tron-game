@@ -3,10 +3,10 @@ import { MobileControls } from './MobileControls';
 import './GameUI.css';
 
 interface GameUIProps {
-  gameStarted: boolean;
+  gameStarted?: boolean;
 }
 
-export const GameUI = ({ gameStarted }: GameUIProps) => {
+export const GameUI = ({ gameStarted = false }: GameUIProps) => {
   const { gameState, localPlayer } = useGameStore();
 
   if (!gameState) return null;
