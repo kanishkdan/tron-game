@@ -68,20 +68,46 @@ const PlayersOnline: React.FC = () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000);
         
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        // Enhanced URL handling logic
+        let apiUrl;
+        const isLocalhost = window.location.hostname === 'localhost';
+        
+        if (import.meta.env.VITE_API_URL) {
+          // Use explicit API URL if provided
+          apiUrl = import.meta.env.VITE_API_URL.replace(/\/$/, '');
+        } else if (import.meta.env.VITE_WS_URL) {
+          // Convert WebSocket URL to HTTP/HTTPS
+          const wsUrl = import.meta.env.VITE_WS_URL;
+          apiUrl = wsUrl
+            .replace(/^wss:/, 'https:')
+            .replace(/^ws:/, 'http:')
+            .replace(/\/$/, '');
+        } else {
+          // Default URLs based on environment
+          apiUrl = isLocalhost 
+            ? 'http://localhost:8000'  // Use port 8080 for local development
+            : 'https://tron-backend-production.up.railway.app';
+        }
+        
+        console.log(`[PlayersOnline] Environment: ${isLocalhost ? 'local' : 'production'}`);
+        console.log(`[PlayersOnline] Using API URL: ${apiUrl}/api/player-count`);
         
         const response = await fetch(
           `${apiUrl}/api/player-count`, 
-          { signal: controller.signal }
+          { 
+            signal: controller.signal,
+            headers: {
+              'Accept': 'application/json'
+            }
+          }
         );
         
         clearTimeout(timeoutId);
         
         if (response.ok) {
           const data = await response.json();
-          console.log(`API player count: ${data.count}`);
+          console.log(`[PlayersOnline] API response: ${JSON.stringify(data)}`);
           
-          // Only update if the count is different to avoid flicker
           if (data.count !== countRef.current) {
             setPlayerCount(Math.max(1, data.count));
           }
@@ -89,11 +115,19 @@ const PlayersOnline: React.FC = () => {
           setIsConnected(true);
           retryCount.current = 0;
         } else {
-          console.error(`Error fetching player count: ${response.status} ${response.statusText}`);
+          console.error(`[PlayersOnline] HTTP Error: ${response.status} ${response.statusText}`);
           handleFetchError();
         }
-      } catch (error) {
-        console.error(`Error fetching player count: ${error}`);
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          if (err.name === 'AbortError') {
+            console.warn('[PlayersOnline] Request timed out');
+          } else {
+            console.error('[PlayersOnline] Fetch error:', err);
+          }
+        } else {
+          console.error('[PlayersOnline] Unknown error:', err);
+        }
         handleFetchError();
       }
     };

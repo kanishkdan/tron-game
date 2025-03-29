@@ -5,14 +5,11 @@ const ControlsContainer = styled.div`
   position: fixed;
   bottom: 20px;
   left: 20px;
-  display: flex;
+  display: none;
   gap: 20px;
   z-index: 1001;
-  pointer-events: none;
-
-  display: none;
   
-  @media (max-width: 768px) {
+  @media (max-width: 768px), (pointer: coarse) {
     display: flex;
   }
 `;
@@ -22,11 +19,9 @@ const JumpButtonContainer = styled.div`
   bottom: 20px;
   right: 20px;
   z-index: 1001;
-  pointer-events: none;
-
   display: none;
   
-  @media (max-width: 768px) {
+  @media (max-width: 768px), (pointer: coarse) {
     display: block;
   }
 `;
@@ -86,14 +81,32 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobileDevice(window.innerWidth <= 768);
+      // Check for touch capability, mobile width, or coarse pointer
+      const isMobile = 
+        'ontouchstart' in window || 
+        navigator.maxTouchPoints > 0 ||
+        window.innerWidth <= 768 ||
+        window.matchMedia('(pointer: coarse)').matches;
+      
+      setIsMobileDevice(isMobile);
+      console.log('[MobileControls] Device detection:', { 
+        isMobile,
+        width: window.innerWidth,
+        touchPoints: navigator.maxTouchPoints,
+        hasTouch: 'ontouchstart' in window,
+        pointer: window.matchMedia('(pointer: coarse)').matches
+      });
     };
     
     checkMobile();
     window.addEventListener('resize', checkMobile);
     
+    // Also check on orientation change for mobile devices
+    window.addEventListener('orientationchange', checkMobile);
+    
     return () => {
       window.removeEventListener('resize', checkMobile);
+      window.removeEventListener('orientationchange', checkMobile);
     };
   }, []);
 
