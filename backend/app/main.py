@@ -24,6 +24,8 @@ origins = [
     "http://127.0.0.1:3000",
     "https://tron-game-production.up.railway.app",  # Railway frontend domain
     "https://tron-backend-production.up.railway.app",  # Railway backend domain
+    "https://tron.kanishkdan.com",  # Production domain
+    "http://tron.kanishkdan.com"  # In case HTTP is used
 ]
 
 app.add_middleware(
