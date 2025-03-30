@@ -22,7 +22,8 @@ origins = [
     "http://localhost:5173",  # Vite's default dev server port
     "http://127.0.0.1:5173",
     "http://127.0.0.1:3000",
-    "*",  # Allow all origins for testing
+    "https://tron-game-production.up.railway.app",  # Railway frontend domain
+    "https://tron-backend-production.up.railway.app",  # Railway backend domain
 ]
 
 app.add_middleware(
@@ -129,12 +130,15 @@ async def root():
 
 @app.websocket("/ws/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, player_id: str):
+    print(f"[WebSocket] Connection attempt from player {player_id}")
     try:
+        print(f"[WebSocket] Accepting connection for player {player_id}")
         await websocket.accept()
-        print(f"Player {player_id} connected")
+        print(f"[WebSocket] Player {player_id} connected successfully")
         
         # Check if player already exists, if so, handle as a reconnection
         is_reconnection = player_id in active_connections
+        print(f"[WebSocket] Is reconnection: {is_reconnection}")
         
         # First update the connection reference (regardless of reconnection status)
         old_connection = active_connections.get(player_id)
@@ -143,18 +147,19 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
         # Close old connection if it exists to prevent duplicate connections
         if is_reconnection and old_connection != websocket:
             try:
-                print(f"Closing old connection for reconnecting player {player_id}")
+                print(f"[WebSocket] Closing old connection for reconnecting player {player_id}")
                 await old_connection.close()
             except Exception as e:
-                print(f"Error closing old connection for {player_id}: {str(e)}")
+                print(f"[WebSocket] Error closing old connection for {player_id}: {str(e)}")
         
         # Add player to game state (or update if reconnecting)
         if is_reconnection:
-            print(f"Player {player_id} is reconnecting")
+            print(f"[WebSocket] Player {player_id} is reconnecting")
             # Refresh the player state but don't broadcast a new join event
             game_state.update_player(player_id)
         else:
             # For new players, add them to game state
+            print(f"[WebSocket] Adding new player {player_id} to game state")
             game_state.add_player(player_id)
             # Broadcast new player to others
             await broadcast({
@@ -164,50 +169,24 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
         
         # Get current state to send to the player
         current_state = game_state.get_state()
-        print(f"Sending game state to {player_id}: {len(current_state['players'])} players")
+        print(f"[WebSocket] Sending game state to {player_id}: {len(current_state['players'])} players")
         
-        # Send initial game state to the player
-        await websocket.send_json({
-            "type": "game_state",
-            "data": current_state
-        })
+        try:
+            # Send initial game state to the player
+            await websocket.send_json({
+                "type": "game_state",
+                "data": current_state
+            })
+            print(f"[WebSocket] Initial game state sent to {player_id}")
+        except Exception as e:
+            print(f"[WebSocket] Error sending initial game state to {player_id}: {str(e)}")
+            raise
         
-        # If this is the first real player, add bots automatically
-        print(f"DEBUG: Active connections: {len(active_connections)}, Bots: {len(game_state.bots)}")
-        if len(active_connections) == 1 and len(game_state.bots) == 0:
-            print(f"DEBUG: First player connected, adding {BOT_COUNT} bots with trails={ENABLE_BOT_LIGHT_TRAILS}")
-            # Add bots with configured settings
-            game_state.add_bots(BOT_COUNT, ENABLE_BOT_LIGHT_TRAILS)
-            print(f"DEBUG: Added bots, now have {len(game_state.bots)} bots")
-            
-            # Start bot update loop
-            if not game_state.bot_update_task:
-                print("DEBUG: Starting bot update loop")
-                await game_state.start_bot_updates(broadcast)
-        else:
-            print(f"DEBUG: Not adding bots, conditions not met")
-            
-            # Send information about all bots to the newly connected player
-            for bot_id, bot in game_state.bots.items():
-                print(f"DEBUG: Sending bot {bot_id} to player {player_id}")
-                await websocket.send_json({
-                    "type": "player_joined",
-                    "data": {
-                        "player_id": bot_id,
-                        "is_bot": True,
-                        "use_light_trails": bot.use_light_trails
-                    }
-                })
-            
-            # If we have bots but updates aren't running, start them
-            if len(game_state.bots) > 0 and not game_state.bot_update_task:
-                print("DEBUG: Found existing bots, starting update loop")
-                await game_state.start_bot_updates(broadcast)
-        
-        # Main message handling loop
+        # Handle messages from the player
         while True:
             try:
                 data = await websocket.receive_text()
+                print(f"[WebSocket] Received message from {player_id}: {data[:100]}...")  # Log first 100 chars
                 message = json.loads(data)
                 
                 # Handle player movement
@@ -280,25 +259,27 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     print(f"Player {player_id} sent explicit disconnect")
                     break
                     
-            except json.JSONDecodeError:
-                print(f"Invalid JSON received from {player_id}")
-                continue
             except WebSocketDisconnect:
-                print(f"WebSocket disconnect in message loop for {player_id}")
+                print(f"[WebSocket] Player {player_id} disconnected")
                 break
             except Exception as e:
-                print(f"Error processing message from {player_id}: {str(e)}")
-                continue
+                print(f"[WebSocket] Error processing message from {player_id}: {str(e)}")
+                break
                 
     except WebSocketDisconnect:
-        print(f"Client {player_id} disconnected during setup")
+        print(f"[WebSocket] WebSocket disconnect in message loop for {player_id}")
     except Exception as e:
-        print(f"Error handling WebSocket for {player_id}: {str(e)}")
+        print(f"[WebSocket] Error handling WebSocket for {player_id}: {str(e)}")
     finally:
-        # Clean up the connection, but don't immediately remove player from game state
-        # This allows for brief disconnections/reconnections without removing the player
+        # Cleanup
         if player_id in active_connections and active_connections[player_id] == websocket:
+            print(f"[WebSocket] Cleaning up connection for {player_id}")
             del active_connections[player_id]
+            game_state.remove_player(player_id)
+            await broadcast({
+                "type": "player_left",
+                "data": {"player_id": player_id}
+            })
             
         # Start a delayed removal task 
         asyncio.create_task(delayed_player_removal(player_id))
