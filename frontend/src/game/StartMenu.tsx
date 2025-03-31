@@ -191,22 +191,6 @@ const Footer = styled.div`
   }
 `;
 
-const VibeJamLink = styled.a`
-  font-family: 'system-ui', sans-serif;
-  position: fixed;
-  bottom: -1px;
-  right: -1px;
-  padding: 7px;
-  font-size: 14px;
-  font-weight: bold;
-  background: #fff;
-  color: #000;
-  text-decoration: none;
-  z-index: 10000;
-  border-top-left-radius: 12px;
-  border: 1px solid #fff;
-`;
-
 const SocialLinks = styled.div`
   display: flex;
   justify-content: center;
@@ -257,7 +241,6 @@ const StartMenu: React.FC<StartMenuProps> = ({ onStart }) => {
         
         <Footer>
           Made with vibes by <a href="https://x.com/kanishk_razdan" target="_blank" rel="noopener noreferrer">this guy</a>
-          <VibeJamLink target="_blank" href="https://jam.pieter.com">🕹️ Vibe Jam 2025</VibeJamLink>
         </Footer>
       </MenuContent>
     </MenuContainer>

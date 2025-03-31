@@ -30,3 +30,4 @@ ENV/
 *.pyw
 *.pyz
 *.pywz
+node_modules/
