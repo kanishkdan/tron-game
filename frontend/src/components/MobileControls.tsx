@@ -185,26 +185,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
 
   // Allow debugging by showing in any mode
   if (!isMobileDevice && !forceMobile) {
-    // Add a small debug indicator that can be clicked to force show controls
-    return (
-      <div 
-        style={{
-          position: 'fixed',
-          bottom: '5px',
-          left: '5px',
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          color: '#0fbef2',
-          padding: '5px',
-          borderRadius: '4px',
-          fontSize: '10px',
-          zIndex: 1001,
-          cursor: 'pointer'
-        }}
-        onClick={() => setIsMobileDevice(true)}
-      >
-        🎮
-      </div>
-    );
+    return null;
   }
 
   if (!isMobileDevice) return null;

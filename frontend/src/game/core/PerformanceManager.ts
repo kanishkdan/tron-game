@@ -16,7 +16,7 @@ export class PerformanceManager {
     private readonly FPS_HISTORY_SIZE = 20;
     private isEnabled = true;
     private lastResolutionChangeTime = 0;
-    private readonly MIN_CHANGE_INTERVAL = 5000;
+    private readonly MIN_CHANGE_INTERVAL = 2000;
     private isOptimalState = false; // Track if we've achieved optimal state (50+ FPS at 100% resolution)
 
     private constructor() {

@@ -12,7 +12,6 @@ import * as CANNON from 'cannon-es';
 import { GameClient } from '../network/gameClient';
 import { MultiplayerManager } from './core/MultiplayerManager';
 import { TrailActivationDisplay } from '../components/TrailActivationDisplay';
-import { PerformanceDisplay } from '../components/PerformanceDisplay';
 import { KillFeed } from '../components/KillFeed';
 import { ChatBox } from '../components/ChatBox';
 import { GameUI } from '../components/GameUI';
@@ -447,7 +446,6 @@ export const GameScene = () => {
                 />
             )}
             <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />
-            <PerformanceDisplay />
             <KillFeed messages={killMessages} />
             {isChatOpen && (
                 <ChatBox 
