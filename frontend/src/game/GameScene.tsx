@@ -128,11 +128,23 @@ const GameRenderer = ({
             });
         });
 
+        // Listen for lightcycle restart events
+        const handleLightcycleRestart = (event: CustomEvent) => {
+            const newCycle = event.detail.cycle;
+            if (newCycle && camera instanceof THREE.PerspectiveCamera) {
+                console.log('[DEBUG] Updating camera controller for restarted lightcycle');
+                cameraController.current = new CameraController(camera, newCycle);
+            }
+        };
+
+        window.addEventListener('lightcycle_restarted', handleLightcycleRestart as EventListener);
+
         return () => {
             window.gameRenderer = undefined;
             multiplayerManager.current?.clear();
+            window.removeEventListener('lightcycle_restarted', handleLightcycleRestart as EventListener);
         };
-    }, [gl, scene, gameClient]);
+    }, [gl, scene, gameClient, camera, game]);
 
     useEffect(() => {
         if (game.getPlayer()) {

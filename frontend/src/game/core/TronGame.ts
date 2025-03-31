@@ -329,8 +329,65 @@ export class TronGame {
         // If this was the current player, restart game after a delay
         if (isCurrentPlayer) {
             setTimeout(() => {
-                window.location.reload();
+                // Pass a callback to update the camera
+                this.restartCurrentPlayer(playerId, (newCycle) => {
+                    // Dispatch a custom event that GameRenderer can listen for
+                    const event = new CustomEvent('lightcycle_restarted', { detail: { cycle: newCycle } });
+                    window.dispatchEvent(event);
+                });
             }, 1500);
+        }
+    }
+
+    // Add a new method to restart the current player without reloading
+    private restartCurrentPlayer(playerId: string | null, onRestart?: (cycle: LightCycle) => void) {
+        if (!playerId) return;
+        
+        try {
+            // Get player name from the ID (format is name-randomstring)
+            const playerName = playerId.split('-')[0];
+            if (!playerName) return;
+            
+            console.log(`[DEBUG] Restarting player ${playerName} after crash`);
+            
+            // Calculate initial position for player restart
+            const startPosition = new THREE.Vector3(
+                (Math.random() * 0.5 + 0.1) * this.ARENA_SIZE/2 * (Math.random() > 0.5 ? 1 : -1),
+                1,
+                (Math.random() * 0.5 + 0.1) * this.ARENA_SIZE/2 * (Math.random() > 0.5 ? 1 : -1)
+            );
+            
+            // Create new player's light cycle with trail activation callback
+            const playerCycle = new LightCycle(
+                this.scene,
+                startPosition,
+                this.world,
+                () => this.handleCollision(playerCycle, "Arena"),
+                (secondsRemaining) => {
+                    if (this.onTrailActivationUpdate) {
+                        this.onTrailActivationUpdate({
+                            playerId: playerId, // Use full player ID to match existing connections
+                            secondsRemaining
+                        });
+                    }
+                }
+            );
+            
+            // Add back to players map with the same ID
+            this.players.set(playerId, playerCycle);
+            this.currentPlayer = playerCycle;
+            
+            // If we have a multiplayer manager, update it
+            if (this.multiplayerManager) {
+                this.multiplayerManager.updateLocalPlayer(playerCycle);
+            }
+
+            // Notify about the new cycle
+            if (onRestart) {
+                onRestart(playerCycle);
+            }
+        } catch (error) {
+            console.error("Error restarting player:", error);
         }
     }
 
