@@ -375,35 +375,26 @@ export class MultiplayerManager {
     }
 
     // Add method to update local player reference when restarting
-    updateLocalPlayer(newCycle: LightCycle) {
-        if (!this.localPlayerId) return;
+    updateLocalPlayer(cycle: LightCycle) {
+        console.log('[DEBUG] Updating local player reference');
         
-        // Update local player position tracking
-        const position = newCycle.getPosition();
-        this.setLocalPlayerPosition(position);
-        
-        console.log(`[DEBUG] Updated local player reference after restart: ${this.localPlayerId}`);
-        
-        // Remove this player from remote players if it somehow got there
-        if (this.remotePlayers.has(this.localPlayerId)) {
-            this.forceRemovePlayer(this.localPlayerId);
+        // Remove from remote players if mistakenly added
+        if (this.localPlayerId) {
+            this.remotePlayers.delete(this.localPlayerId);
+            // Also remove from enemy positions to prevent ghost dots
+            this.enemyPositions.delete(this.localPlayerId);
         }
         
-        // Add player's position to enemy positions to make it visible on minimap
-        this.enemyPositions.set(this.localPlayerId, {
-            x: position.x,
-            z: position.z
-        });
+        // Update enemy positions for minimap visibility
+        const pos = cycle.getPosition();
+        if (this.localPlayerId) {
+            this.enemyPositions.set(this.localPlayerId, { x: pos.x, z: pos.z });
+        }
         
-        // Notify other players about position with a small delay
-        // to ensure everyone has time to process the respawn
+        // Delay notifying other players about new position
         setTimeout(() => {
             if (this.localPlayerId) {
-                this.updatePlayerPosition(this.localPlayerId, {
-                    x: position.x,
-                    y: position.y,
-                    z: position.z
-                }, newCycle.getRotation());
+                this.remotePositions.set(this.localPlayerId, pos);
             }
         }, 100);
     }

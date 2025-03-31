@@ -91,6 +91,10 @@ export const Minimap = ({
             ctx.fillStyle = '#ff3333'; // Bright red for enemies
             
             enemyPositions.forEach(enemy => {
+                // Skip enemies at or very close to (0,0) as they are likely respawning
+                if (Math.abs(enemy.position.x) < 1 && Math.abs(enemy.position.z) < 1) {
+                    return;
+                }
                 const enemyPos = worldToMinimap(enemy.position);
                 ctx.beginPath();
                 ctx.arc(enemyPos.x, enemyPos.y, ENEMY_DOT_SIZE, 0, Math.PI * 2);
