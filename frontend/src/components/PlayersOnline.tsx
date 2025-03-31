@@ -37,7 +37,6 @@ const PlayersOnline: React.FC = () => {
   // Update countRef whenever playerCount changes
   useEffect(() => {
     countRef.current = playerCount;
-    console.log("Player count updated:", playerCount);
   }, [playerCount]);
 
   useEffect(() => {
@@ -49,12 +48,12 @@ const PlayersOnline: React.FC = () => {
 
     // Custom event listeners for real-time player tracking
     const handlePlayerJoined = (e: CustomEvent<{ playerId: string }>) => {
-      console.log(`Player joined: ${e.detail.playerId}`);
+      // console.log(`Player joined: ${e.detail.playerId}`);
       setPlayerCount(prev => prev + 1);
     };
 
     const handlePlayerLeft = (e: CustomEvent<{ playerId: string }>) => {
-      console.log(`Player left: ${e.detail.playerId}`);
+      // console.log(`Player left: ${e.detail.playerId}`);
       setPlayerCount(prev => Math.max(1, prev - 1)); // Always keep at least 1 player
     };
 
@@ -89,8 +88,8 @@ const PlayersOnline: React.FC = () => {
             : 'https://tron-backend-production.up.railway.app:8080'; // Production with port 8080
         }
         
-        console.log(`[PlayersOnline] Environment: ${isLocalhost ? 'local' : 'production'}`);
-        console.log(`[PlayersOnline] Using API URL: ${apiUrl}/api/player-count`);
+        // console.log(`[PlayersOnline] Environment: ${isLocalhost ? 'local' : 'production'}`);
+        // console.log(`[PlayersOnline] Using API URL: ${apiUrl}/api/player-count`);
         
         const response = await fetch(
           `${apiUrl}/api/player-count`, 
@@ -106,7 +105,7 @@ const PlayersOnline: React.FC = () => {
         
         if (response.ok) {
           const data = await response.json();
-          console.log(`[PlayersOnline] API response: ${JSON.stringify(data)}`);
+          // console.log(`[PlayersOnline] API response: ${JSON.stringify(data)}`);
           
           if (data.count !== countRef.current) {
             setPlayerCount(Math.max(1, data.count));

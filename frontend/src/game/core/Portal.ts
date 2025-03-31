@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
 
 interface PortalConfig {
     position: THREE.Vector3;
@@ -7,25 +6,25 @@ interface PortalConfig {
     radius: number;
     color: number;
     targetUrl: string;
+    label?: string;
+    hostUrl?: string;
 }
 
 export class Portal {
+    private static isRedirecting: boolean = false;
     private scene: THREE.Scene;
-    private world: CANNON.World;
     private config: PortalConfig;
     private portalGroup: THREE.Group;
     private portalRing!: THREE.Mesh;
     private portalInner!: THREE.Mesh;
     private particleSystem!: THREE.Points;
     private collisionBox!: THREE.Box3;
-    private body!: CANNON.Body;
     private animationId!: number;
     private lastCheckTime: number = 0;
-    private readonly CHECK_INTERVAL: number = 250; // Check collision every 250ms for performance
+    private readonly CHECK_INTERVAL: number = 250;
     
-    constructor(scene: THREE.Scene, world: CANNON.World, config: PortalConfig) {
+    constructor(scene: THREE.Scene, config: PortalConfig) {
         this.scene = scene;
-        this.world = world;
         this.config = config;
         this.portalGroup = new THREE.Group();
         
@@ -33,68 +32,89 @@ export class Portal {
         this.portalGroup.position.copy(config.position);
         if (config.rotation) {
             this.portalGroup.rotation.copy(config.rotation);
+        } else {
+            // Default rotation from example.js
+            this.portalGroup.rotation.x = 0.35;
+            this.portalGroup.rotation.y = 0;
         }
         
         // Create the portal visuals
         this.createPortalVisuals();
-        
-        // Add physics body
-        this.createPhysicsBody();
         
         // Start animation
         this.animate();
     }
     
     private createPortalVisuals() {
-        // Create portal ring (torus) - reduce geometry complexity
-        const ringGeometry = new THREE.TorusGeometry(this.config.radius, this.config.radius * 0.1, 12, 48);
+        // Create portal ring (torus) - matching example.js geometry
+        const ringGeometry = new THREE.TorusGeometry(this.config.radius, 2, 16, 100);
         const ringMaterial = new THREE.MeshPhongMaterial({
             color: this.config.color,
             emissive: this.config.color,
-            emissiveIntensity: 0.8,
             transparent: true,
-            opacity: 0.9,
-            shininess: 100
+            opacity: 0.8
         });
         this.portalRing = new THREE.Mesh(ringGeometry, ringMaterial);
         this.portalGroup.add(this.portalRing);
         
-        // Create portal inner surface with slightly transparent effect
-        const innerGeometry = new THREE.CircleGeometry(this.config.radius * 0.9, 24);
+        // Create portal inner surface - matching example.js
+        const innerGeometry = new THREE.CircleGeometry(this.config.radius * 0.87, 32);
         const innerMaterial = new THREE.MeshBasicMaterial({
             color: this.config.color,
             transparent: true,
-            opacity: 0.4,
+            opacity: 0.5,
             side: THREE.DoubleSide
         });
         this.portalInner = new THREE.Mesh(innerGeometry, innerMaterial);
         this.portalGroup.add(this.portalInner);
         
-        // Create particle system for portal effect - reduce particle count
-        const particleCount = 300; // Reduced from 800
+        // Add portal label if provided
+        if (this.config.label) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            if (!context) {
+                console.warn('Could not get 2D context for portal label');
+                return;
+            }
+            canvas.width = 512;
+            canvas.height = 64;
+            context.fillStyle = `#${this.config.color.toString(16).padStart(6, '0')}`;
+            context.font = 'bold 32px Arial';
+            context.textAlign = 'center';
+            context.fillText(this.config.label, canvas.width/2, canvas.height/2);
+            const texture = new THREE.CanvasTexture(canvas);
+            const labelGeometry = new THREE.PlaneGeometry(30, 5);
+            const labelMaterial = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+            const label = new THREE.Mesh(labelGeometry, labelMaterial);
+            label.position.y = 20;
+            this.portalGroup.add(label);
+        }
+        
+        // Create particle system - matching example.js
+        const particleCount = 1000;
         const particles = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
         
-        // Create a color object from the config color for easier manipulation
         const color = new THREE.Color(this.config.color);
         const rColor = color.r;
         const gColor = color.g;
         const bColor = color.b;
         
-        for (let i = 0; i < particleCount; i++) {
-            const i3 = i * 3;
-            // Create particles in a ring around the portal with some variation
+        for (let i = 0; i < particleCount * 3; i += 3) {
             const angle = Math.random() * Math.PI * 2;
-            const radius = this.config.radius * (0.9 + Math.random() * 0.2);
-            positions[i3] = Math.cos(angle) * radius;
-            positions[i3 + 1] = Math.sin(angle) * radius;
-            positions[i3 + 2] = (Math.random() - 0.5) * (this.config.radius * 0.1);
-            
-            // Set color with slight variation
-            colors[i3] = rColor * (0.8 + Math.random() * 0.2);
-            colors[i3 + 1] = gColor * (0.8 + Math.random() * 0.2);
-            colors[i3 + 2] = bColor * (0.8 + Math.random() * 0.2);
+            const radius = this.config.radius + (Math.random() - 0.5) * 4;
+            positions[i] = Math.cos(angle) * radius;
+            positions[i + 1] = Math.sin(angle) * radius;
+            positions[i + 2] = (Math.random() - 0.5) * 4;
+
+            colors[i] = rColor * (0.8 + Math.random() * 0.2);
+            colors[i + 1] = gColor * (0.8 + Math.random() * 0.2);
+            colors[i + 2] = bColor * (0.8 + Math.random() * 0.2);
         }
         
         particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -104,8 +124,7 @@ export class Portal {
             size: 0.2,
             vertexColors: true,
             transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending
+            opacity: 0.6
         });
         
         this.particleSystem = new THREE.Points(particles, particleMaterial);
@@ -123,44 +142,21 @@ export class Portal {
         this.collisionBox = new THREE.Box3().setFromObject(this.portalGroup);
     }
     
-    private createPhysicsBody() {
-        // Create a physics body with zero mass (static body) for collision detection
-        const shape = new CANNON.Sphere(this.config.radius);
-        this.body = new CANNON.Body({
-            mass: 0, // Static body
-            position: new CANNON.Vec3(
-                this.config.position.x,
-                this.config.position.y,
-                this.config.position.z
-            ),
-            shape: shape,
-            collisionFilterGroup: 2,  // Assign to group 2
-            collisionFilterMask: 1    // Only collide with group 1 (players)
-        });
-        
-        this.world.addBody(this.body);
-    }
-    
     // Animate the portal particles for a dynamic effect - with performance optimizations
     private animate() {
         const positions = this.particleSystem.geometry.attributes.position.array as Float32Array;
-        let frameCount = 0;
         
         const updateParticles = () => {
-            // Only update particles every 2 frames for performance
-            frameCount++;
-            if (frameCount % 2 === 0) {
-                for (let i = 0; i < positions.length; i += 9) { // Update only 1/3 of particles each frame
-                    // Create a flowing/pulsing effect
-                    positions[i] += Math.sin(Date.now() * 0.001 + i) * 0.01;
-                    positions[i + 1] += Math.cos(Date.now() * 0.001 + i) * 0.01;
-                }
-                this.particleSystem.geometry.attributes.position.needsUpdate = true;
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i + 1] += 0.05 * Math.sin(Date.now() * 0.001 + i);
             }
+            this.particleSystem.geometry.attributes.position.needsUpdate = true;
             
-            // Rotate the portal ring slightly for additional effect - reduced rotation speed
-            if (frameCount % 3 === 0) {
-                this.portalRing.rotation.z += 0.0005;
+            // Update portal shader time if uniforms exist
+            if (this.portalInner.material instanceof THREE.ShaderMaterial && 
+                this.portalInner.material.uniforms && 
+                this.portalInner.material.uniforms.time) {
+                this.portalInner.material.uniforms.time.value = Date.now() * 0.001;
             }
             
             this.animationId = requestAnimationFrame(updateParticles);
@@ -178,33 +174,85 @@ export class Portal {
         }
         this.lastCheckTime = now;
         
-        // Create a small sphere around the player position
-        const playerSphere = new THREE.Sphere(position, 3); // Assuming player radius of 3 units
+        // Simple distance check to portal center
+        const portalCenter = this.portalGroup.position;
+        const distance = position.distanceTo(portalCenter);
         
-        // Update collision box
-        this.collisionBox.setFromObject(this.portalGroup);
+        // Log distance when player is close to portal
+        if (distance < 150) {
+            console.log(`Player distance to portal: ${distance.toFixed(1)} units, portal target: ${this.config.targetUrl}`);
+        }
         
-        // Check if player sphere intersects with portal box
-        return this.collisionBox.intersectsSphere(playerSphere);
+        // Extra large collision radius for much easier entry (no physics blocking)
+        return distance < 100;
     }
     
     // Get the target URL with query parameters
     getTargetUrl(username: string, color: string): string {
-        const baseUrl = this.config.targetUrl;
-        const url = new URL(baseUrl);
+        // Get the base URL from the config
+        let baseUrl = this.config.targetUrl;
         
-        // Add query parameters
-        url.searchParams.append('username', username);
-        url.searchParams.append('color', color);
-        url.searchParams.append('ref', window.location.href);
+        // Check if the URL is empty or invalid
+        if (!baseUrl || baseUrl === 'null' || baseUrl === 'undefined') {
+            console.warn('Invalid target URL:', baseUrl);
+            return window.location.href; // Return current URL as fallback
+        }
         
-        return url.toString();
+        // Remove any leading/trailing whitespace
+        baseUrl = baseUrl.trim();
+        
+        // If the URL doesn't start with a protocol, add https://
+        if (!baseUrl.match(/^https?:\/\//i)) {
+            baseUrl = 'https://' + baseUrl;
+        }
+        
+        try {
+            // Create URL object to properly parse and format the URL
+            const url = new URL(baseUrl);
+            
+            // Add the parameters
+            url.searchParams.append('username', username);
+            url.searchParams.append('color', color);
+            
+            // Always set ref to tron.kanishkdan.com
+            url.searchParams.append('ref', 'https://tron.kanishkdan.com');
+            
+            console.log(`[Portal] Generated target URL: ${url.toString()}`);
+            return url.toString();
+        } catch (error) {
+            console.error('[Portal] Error constructing URL:', error);
+            // If URL construction fails, try to construct a basic URL
+            return `${baseUrl}?username=${encodeURIComponent(username)}&color=${encodeURIComponent(color)}&ref=https://tron.kanishkdan.com`;
+        }
     }
     
     // Teleport the player to the target URL
     teleport(username: string, color: string): void {
-        const url = this.getTargetUrl(username, color);
-        window.location.href = url;
+        // Prevent multiple redirects
+        if (Portal.isRedirecting) {
+            console.log('[Portal] Already redirecting, ignoring teleport request');
+            return;
+        }
+
+        try {
+            Portal.isRedirecting = true;
+            const url = this.getTargetUrl(username, color);
+            console.log(`[Portal] Teleporting player ${username} to URL: ${url}`);
+            window.location.href = url;
+        } catch (error) {
+            console.error(`[Portal] Error during teleportation:`, error);
+            Portal.isRedirecting = false;
+            // As a fallback, try to redirect to the original URL without parameters
+            try {
+                console.log(`[Portal] Fallback: Redirecting to base URL: ${this.config.targetUrl}`);
+                window.location.href = this.config.targetUrl;
+            } catch (fallbackError) {
+                console.error(`[Portal] Even fallback redirection failed:`, fallbackError);
+                Portal.isRedirecting = false;
+                // Last resort
+                window.location.reload();
+            }
+        }
     }
     
     // Clean up resources when portal is removed
@@ -226,9 +274,6 @@ export class Portal {
         
         this.particleSystem.geometry.dispose();
         (this.particleSystem.material as THREE.Material).dispose();
-        
-        // Remove physics body
-        this.world.removeBody(this.body);
     }
     
     getPosition(): THREE.Vector3 {

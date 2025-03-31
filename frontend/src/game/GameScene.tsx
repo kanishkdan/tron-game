@@ -211,6 +211,7 @@ const GameRenderer = ({
 export const GameScene = () => {
     const [gameStarted, setGameStarted] = useState(false);
     const [playerName, setPlayerName] = useState<string>();
+    const [sceneReady, setSceneReady] = useState(false);
     const [playerPosition, setPlayerPosition] = useState({ x: 0, y: 0, z: 0 });
     const [trailPoints, setTrailPoints] = useState<{ x: number; z: number }[]>([]);
     const [enemyPositions, setEnemyPositions] = useState<{id: string, position: {x: number, z: number}}[]>([]);
@@ -220,10 +221,46 @@ export const GameScene = () => {
     const [chatMessages, setChatMessages] = useState<Array<{ player_name: string; message: string; timestamp: number }>>([]);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [portalPosition, setPortalPosition] = useState<{ x: number; z: number } | null>(null);
+    const [returnPortalUrl, setReturnPortalUrl] = useState<string | null>(null);
+    const [returnPortalPosition, setReturnPortalPosition] = useState<{ x: number; z: number } | null>(null);
     const scene = useRef<THREE.Scene>();
     const game = useRef<TronGame>();
     const gameClient = useRef<GameClient>();
     const multiplayerManager = useRef<MultiplayerManager>();
+
+    // Add useEffect to handle URL parameters
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const username = urlParams.get('username');
+        const refUrl = urlParams.get('ref');
+        
+        if (username && !gameStarted) {
+            // Just set the player name, but don't start game yet
+            console.log('[URL Init] Username detected:', username);
+            setPlayerName(username);
+            
+            // Store ref URL in state if it exists
+            if (refUrl) {
+                console.log('[URL Init] Ref URL detected:', refUrl);
+                // Decode the URL to handle any encoded characters
+                const decodedRefUrl = decodeURIComponent(refUrl);
+                console.log('[URL Init] Decoded ref URL:', decodedRefUrl);
+                setReturnPortalUrl(decodedRefUrl);
+            } else {
+                console.log('[URL Init] No ref URL detected');
+            }
+        }
+    }, []); // Run this effect only once on mount
+
+    // Add a separate effect to handle scene initialization and game start
+    useEffect(() => {
+        // This effect runs when sceneReady changes to true
+        if (sceneReady && playerName && !gameStarted) {
+            console.log('[Scene Init] Scene is ready, initializing game with username:', playerName);
+            // Scene is now available, initialize game
+            handleGameStart(playerName);
+        }
+    }, [sceneReady, playerName, gameStarted]);
 
     // Handle trail activation events
     const handleTrailActivation = (event: TrailActivationEvent) => {
@@ -246,6 +283,14 @@ export const GameScene = () => {
 
     const handleGameStart = async (name: string) => {
         try {
+            console.log('[Game Start] Starting game with username:', name, 'Scene ready:', !!scene.current);
+            
+            // Early return if scene isn't ready yet
+            if (!scene.current) {
+                console.error('Cannot start game - scene not initialized yet');
+                return;
+            }
+            
             // Initialize game client
             gameClient.current = new GameClient();
             await gameClient.current.connect(name);
@@ -296,6 +341,7 @@ export const GameScene = () => {
             });
             
             if (scene.current) {
+                // Create physics world with proper configuration
                 const physicsWorld = new CANNON.World();
                 physicsWorld.gravity.set(0, -19.81, 0);
                 physicsWorld.defaultContactMaterial.friction = 0.1;
@@ -306,20 +352,38 @@ export const GameScene = () => {
                     scene.current, 
                     physicsWorld,
                     handleTrailActivation,
-                    handleKill
+                    handleKill,
+                    returnPortalUrl
                 );
+
+                // Get color from URL parameters if present
+                const urlParams = new URLSearchParams(window.location.search);
+                const colorParam = urlParams.get('color');
+                let customColor: number | undefined;
                 
-                game.current.start(name);
+                if (colorParam) {
+                    try {
+                        // Convert hex string to number
+                        customColor = parseInt(colorParam, 16);
+                    } catch (error) {
+                        console.error('Invalid color parameter:', error);
+                    }
+                }
+                
+                // Start the game with the player name and custom color
+                game.current.start(name, customColor);
                 
                 // Create and link multiplayer manager
                 const mpManager = new MultiplayerManager(scene.current, physicsWorld);
-                mpManager.setLocalPlayerId(gameClient.current.getPlayerId() || '', '');
+                mpManager.setLocalPlayerId(gameClient.current.getPlayerId() || '', name);
                 game.current.setMultiplayerManager(mpManager);
                 multiplayerManager.current = mpManager;
                 
                 if (game.current) {
                     setArenaSize(game.current.getArenaSize());
                 }
+            } else {
+                console.error('Scene not initialized when starting game');
             }
         } catch (error) {
             console.error('Failed to connect to game server:', error);
@@ -387,13 +451,34 @@ export const GameScene = () => {
     useEffect(() => {
         // Fetch portal position once the game starts
         if (gameStarted && game.current) {
-            const portal = game.current.getArena()?.getPortal();
+            console.log('[GameScene] Fetching portal positions, game started:', gameStarted);
+            console.log('[GameScene] Return portal URL:', returnPortalUrl);
+            
+            const arena = game.current.getArena();
+            console.log('[GameScene] Arena exists:', !!arena);
+            
+            // Get main portal
+            const portal = arena?.getPortal();
             if (portal) {
                 const pos = portal.getPosition();
+                console.log('[GameScene] Main portal found at position:', pos.x, pos.y, pos.z);
                 setPortalPosition({ x: pos.x, z: pos.z });
+            } else {
+                console.log('[GameScene] Main portal not found');
+            }
+            
+            // Get return portal
+            const returnPortal = arena?.getReturnPortal();
+            if (returnPortal) {
+                const returnPos = returnPortal.getPosition();
+                console.log('[GameScene] Return portal found at position:', returnPos.x, returnPos.y, returnPos.z);
+                setReturnPortalPosition({ x: returnPos.x, z: returnPos.z });
+            } else {
+                console.log('[GameScene] Return portal not found');
+                console.log('[GameScene] Return portal URL:', returnPortalUrl);
             }
         }
-    }, [gameStarted]);
+    }, [gameStarted, returnPortalUrl]);
 
     return (
         <>
@@ -405,7 +490,12 @@ export const GameScene = () => {
                     { name: 'rightward', keys: ['ArrowRight', 'd', 'D'] },
                 ]}
             >
-                <Canvas shadows onCreated={(state: RootState) => { scene.current = state.scene; }}>
+                <Canvas shadows onCreated={(state: RootState) => { 
+                    scene.current = state.scene;
+                    console.log('[Canvas] Scene initialized:', !!state.scene);
+                    // Set scene ready state to trigger effect
+                    setSceneReady(true);
+                }}>
                     <Suspense fallback={null}>
                         <Physics>
                             <SceneLighting />
@@ -430,7 +520,7 @@ export const GameScene = () => {
                     </Suspense>
                 </Canvas>
             </KeyboardControls>
-            {!gameStarted && <StartMenu onStart={handleGameStart} />}
+            {!gameStarted && !playerName && <StartMenu onStart={handleGameStart} />}
             <GameUI 
                 gameStarted={gameStarted} 
                 isChatOpen={isChatOpen}
@@ -443,6 +533,7 @@ export const GameScene = () => {
                     trailPoints={trailPoints}
                     enemyPositions={enemyPositions}
                     portalPosition={portalPosition}
+                    returnPortalPosition={returnPortalPosition}
                 />
             )}
             <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />

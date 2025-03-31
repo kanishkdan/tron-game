@@ -26,17 +26,22 @@ export class TronGame {
     private onTrailActivationUpdate?: (event: TrailActivationEvent) => void;
     private multiplayerManager: MultiplayerManager | null = null;
     private onKill?: (killerName: string, victimName: string) => void;
+    private returnPortalUrl: string | null = null;
 
     constructor(
         scene: THREE.Scene, 
         world: CANNON.World,
         onTrailActivationUpdate?: (event: TrailActivationEvent) => void,
-        onKill?: (killerName: string, victimName: string) => void
+        onKill?: (killerName: string, victimName: string) => void,
+        returnPortalUrl: string | null = null
     ) {
         this.scene = scene;
         this.world = world;
         this.onTrailActivationUpdate = onTrailActivationUpdate;
         this.onKill = onKill;
+        this.returnPortalUrl = returnPortalUrl;
+        
+        console.log('[TronGame] Constructor called with returnPortalUrl:', returnPortalUrl);
 
         // Initialize performance manager
         PerformanceManager.getInstance();
@@ -47,9 +52,17 @@ export class TronGame {
             wallHeight: 20 * this.SIZE_MULTIPLIER, // Height of boundary walls
             groundTexturePath: '/segment.jpg' // Using your provided texture
         });
+        
+        // Create return portal if URL is provided
+        if (this.returnPortalUrl && this.arena) {
+            console.log('[TronGame] Creating return portal with URL:', this.returnPortalUrl);
+            this.arena.createReturnPortal(this.returnPortalUrl);
+        } else {
+            console.log('[TronGame] Not creating return portal. returnPortalUrl:', this.returnPortalUrl, 'arena exists:', !!this.arena);
+        }
     }
 
-    start(playerName: string) {
+    start(playerName: string, customColor?: number) {
         // Calculate initial position for player
         const startPosition = new THREE.Vector3(0, 1, 0);
         
@@ -66,7 +79,9 @@ export class TronGame {
                         secondsRemaining
                     });
                 }
-            }
+            },
+            false, // useSharedResources
+            customColor // Pass custom color if provided
         );
         
         this.players.set(playerName, playerCycle);
@@ -498,10 +513,12 @@ export class TronGame {
             return;
         }
         
+        // Get player position
+        const position = cycle.getPosition();
+        
         // Check if there's a portal in the arena
         if (this.arena && this.arena.getPortal()) {
             const portal = this.arena.getPortal();
-            const position = cycle.getPosition();
             
             // Check if player is in the portal
             if (portal && portal.checkCollision(position)) {
@@ -527,6 +544,37 @@ export class TronGame {
                 // Handle portal teleportation
                 console.log(`Player ${username} entered portal. Redirecting...`);
                 portal.teleport(username, color);
+            }
+        }
+        
+        // Check if there's a return portal in the arena
+        if (this.arena && this.arena.getReturnPortal()) {
+            const returnPortal = this.arena.getReturnPortal();
+            
+            // Check if player is in the return portal
+            if (returnPortal && returnPortal.checkCollision(position)) {
+                // Get player info for URL
+                let username = playerName;
+                let color = "blue"; // Default color
+                
+                // If multiplayer manager exists, get the player name
+                if (this.multiplayerManager) {
+                    username = this.multiplayerManager.getPlayerName(playerName);
+                }
+                
+                // Get cycle color in hex format
+                try {
+                    const bikeColorHex = cycle.getBikeColor();
+                    if (bikeColorHex) {
+                        color = new THREE.Color(bikeColorHex).getHexString();
+                    }
+                } catch (error) {
+                    console.error("Error getting color:", error);
+                }
+                
+                // Handle return portal teleportation
+                console.log(`Player ${username} entered return portal. Redirecting back...`);
+                returnPortal.teleport(username, color);
             }
         }
     }

@@ -160,7 +160,8 @@ export class LightCycle {
         physicsWorld: CANNON.World,
         onCollision?: () => void,
         trailActivationCallback?: (secondsRemaining: number) => void,
-        useSharedResources: boolean = false
+        useSharedResources: boolean = false,
+        customColor?: number
     ) {
         // Store the callback for trail activation countdown
         this.trailActivationCallback = trailActivationCallback;
@@ -172,8 +173,20 @@ export class LightCycle {
         this.scene = scene;
         this.onCollision = onCollision;
         
-        // Get random color for this bike
-        this.bikeColor = ColorUtils.getRandomTronColor();
+        // Get color - either custom color or random Tron color
+        if (customColor) {
+            // Find matching Tron color or create a new one
+            const allColors = ColorUtils.getAllTronColors();
+            const matchingColor = allColors.find(c => c.hex === customColor);
+            if (matchingColor) {
+                this.bikeColor = matchingColor;
+            } else {
+                // If no matching color found, create a new one
+                this.bikeColor = { hex: customColor, name: 'custom' };
+            }
+        } else {
+            this.bikeColor = ColorUtils.getRandomTronColor();
+        }
 
         // Create a single consolidated light for the bike with reduced intensity and range
         this.bikeLight = new THREE.PointLight(this.bikeColor.hex, 1.5, 20);

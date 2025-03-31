@@ -13,6 +13,7 @@ export class Arena {
     private world: CANNON.World;
     private config: ArenaConfig;
     private portal: Portal | null = null;
+    private returnPortal: Portal | null = null;
 
     constructor(scene: THREE.Scene, world: CANNON.World, config: ArenaConfig) {
         this.scene = scene;
@@ -38,6 +39,10 @@ export class Arena {
     
     getPortal(): Portal | null {
         return this.portal;
+    }
+    
+    getReturnPortal(): Portal | null {
+        return this.returnPortal;
     }
 
     createLighting() {
@@ -73,7 +78,7 @@ export class Arena {
         // Create a portal positioned at the edge of the arena, touching the floor
         const portalPosition = new THREE.Vector3(
             this.config.size / 850, // Position at 1/3 of the arena size on X axis
-            portalRadius - 25, // Set Y position so the bottom touches the ground (y=0)
+            portalRadius - 12.5, // Set Y position so the bottom touches the ground (y=0)
             this.config.size / 2.5 // Position at 1/3 of the arena size on Z axis
         );
         
@@ -83,10 +88,48 @@ export class Arena {
             rotation: new THREE.Euler(0, 0, 0), // No rotation, portal stands straight
             radius: portalRadius, // Increased portal radius
             color: 0x0fbef2, // Tron blue color
-            targetUrl: 'http://portal.pieter.com'
+            targetUrl: 'https://portal.pieter.com',
+            hostUrl: 'https://tron.kanishkdan.com',
+            label: 'EXIT'
         };
         
-        this.portal = new Portal(this.scene, this.world, portalConfig);
+        this.portal = new Portal(this.scene, portalConfig);
+        console.log('[Arena] Main portal created successfully at', portalPosition.x, portalPosition.y, portalPosition.z);
+    }
+
+    createReturnPortal(targetUrl: string) {
+        console.log('[Arena] Creating return portal with URL:', targetUrl);
+        
+        // Create a return portal on the opposite side of the arena from the main portal
+        // Position it in the opposite quadrant
+        const portalRadius = 30;
+        
+        // Create a portal positioned at the opposite edge of the arena
+        const portalPosition = new THREE.Vector3(
+            -this.config.size / 850, // Position at opposite 1/3 of the arena size on X axis
+            portalRadius - 12.5, // Set Y position so the bottom touches the ground (y=0)
+            -this.config.size / 2.5 // Position at opposite 1/3 of the arena size on Z axis
+        );
+        
+        console.log('[Arena] Creating return portal at position:', portalPosition.x, portalPosition.y, portalPosition.z);
+        
+        // Create portal with red glow, same size, and no rotation
+        const portalConfig = {
+            position: portalPosition,
+            rotation: new THREE.Euler(0, 0, 0), // No rotation, portal stands straight
+            radius: portalRadius, // Same portal radius
+            color: 0xff3333, // Red color
+            targetUrl: targetUrl,
+            label: 'RETURN'
+        };
+        
+        try {
+            this.returnPortal = new Portal(this.scene, portalConfig);
+            console.log('[Arena] Return portal created successfully');
+            console.log('[Arena] Return portal position:', this.returnPortal.getPosition().x, this.returnPortal.getPosition().y, this.returnPortal.getPosition().z);
+        } catch (error) {
+            console.error('[Arena] Error creating return portal:', error);
+        }
     }
 
     dispose() {
@@ -106,6 +149,12 @@ export class Arena {
         if (this.portal) {
             this.portal.dispose();
             this.portal = null;
+        }
+        
+        // Dispose return portal if it exists
+        if (this.returnPortal) {
+            this.returnPortal.dispose();
+            this.returnPortal = null;
         }
     }
 } 

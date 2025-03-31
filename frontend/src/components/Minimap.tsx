@@ -2,11 +2,12 @@ import React, { useRef, useEffect } from 'react';
 import { FpsCounter } from './FpsCounter';
 
 interface MinimapProps {
-    playerPosition: { x: number; z: number };
+    playerPosition: { x: number; y: number; z: number };
     arenaSize: number;
-    trailPoints?: { x: number; z: number }[];
-    enemyPositions?: { id: string, position: { x: number; z: number } }[];
-    portalPosition?: { x: number; z: number } | null;
+    trailPoints: { x: number; z: number }[];
+    enemyPositions: { id: string; position: { x: number; z: number } }[];
+    portalPosition: { x: number; z: number } | null;
+    returnPortalPosition?: { x: number; z: number } | null;
 }
 
 export const Minimap = ({
@@ -14,7 +15,8 @@ export const Minimap = ({
     arenaSize,
     trailPoints = [],
     enemyPositions = [],
-    portalPosition = null
+    portalPosition = null,
+    returnPortalPosition = null
 }: MinimapProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const MINIMAP_SIZE = 150;
@@ -107,6 +109,18 @@ export const Minimap = ({
             ctx.stroke();
         }
 
+        // Draw return portal position
+        if (returnPortalPosition) {
+            const returnPortalPosMinimap = worldToMinimap(returnPortalPosition);
+            ctx.fillStyle = '#ff00ff'; // Magenta color for return portal
+            ctx.strokeStyle = '#ffffff'; // White border
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(returnPortalPosMinimap.x, returnPortalPosMinimap.y, PORTAL_DOT_SIZE, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+
         // Draw player position
         const minimapPos = worldToMinimap(playerPosition);
         ctx.fillStyle = '#0fbef2';
@@ -121,7 +135,7 @@ export const Minimap = ({
         ctx.fillText(`Player: ${Math.round(playerPosition.x)},${Math.round(playerPosition.z)}`, 5, 20);
         ctx.fillText(`Enemies: ${enemyPositions.length}`, 5, 30);
 
-    }, [playerPosition, arenaSize, trailPoints, enemyPositions, portalPosition]);
+    }, [playerPosition, arenaSize, trailPoints, enemyPositions, portalPosition, returnPortalPosition]);
 
     return (
         <>
