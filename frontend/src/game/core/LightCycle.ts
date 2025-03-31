@@ -90,6 +90,11 @@ export class LightCycle {
     private keyupHandler: (event: KeyboardEvent) => void = () => {};
     private gameControlHandler: EventListener = () => {};
 
+    // Player name properties
+    private playerName: string = '';
+    private playerNameMesh: THREE.Mesh | null = null;
+    private readonly NAME_HEIGHT = 8; // Height above the bike for the name to appear
+
     /**
      * Initialize shared resources for all LightCycle instances
      * This reduces memory usage and CPU/GPU load when creating multiple bikes
@@ -161,8 +166,12 @@ export class LightCycle {
         onCollision?: () => void,
         trailActivationCallback?: (secondsRemaining: number) => void,
         useSharedResources: boolean = false,
-        customColor?: number
+        customColor?: number,
+        playerName: string = 'Player' // New parameter for player name
     ) {
+        // Store the player name
+        this.playerName = playerName;
+        
         // Store the callback for trail activation countdown
         this.trailActivationCallback = trailActivationCallback;
         this.useSharedResources = useSharedResources;
@@ -238,6 +247,9 @@ export class LightCycle {
         // Load bike model with adjusted position
         this.loadBikeModel();
 
+        // Create player name text
+        this.createPlayerNameMesh();
+
         // Initialize last grid position
         this.lastGridPosition = new THREE.Vector3(0, 0, 0);
 
@@ -255,18 +267,21 @@ export class LightCycle {
                     this.modelContainer.visible = true;
                     this.trailLine.visible = this.trailsActive;
                     this.bikeLight.intensity = 1.5;
+                    if (this.playerNameMesh) this.playerNameMesh.visible = true;
                     break;
                     
                 case LOD_MEDIUM:
                     this.modelContainer.visible = true;
                     this.trailLine.visible = this.trailsActive;
                     this.bikeLight.intensity = 0.7;
+                    if (this.playerNameMesh) this.playerNameMesh.visible = true;
                     break;
                     
                 case LOD_LOW:
                     this.modelContainer.visible = true;
                     this.trailLine.visible = this.trailsActive;  // Keep trails visible
                     this.bikeLight.intensity = 0.3;  // Reduced but not zero
+                    if (this.playerNameMesh) this.playerNameMesh.visible = true; // Keep names visible even in LOW LOD
                     break;
             }
         }
@@ -540,6 +555,14 @@ export class LightCycle {
         this.modelContainer.rotation.y = this.currentRotation;
         this.modelContainer.rotation.z = this.currentBankAngle;
         this.modelContainer.rotation.x = this.isJumping ? -0.2 : 0;
+        
+        // Ensure player name always faces the camera
+        if (this.playerNameMesh) {
+            // Make text always face the camera by countering the parent's rotation
+            this.playerNameMesh.rotation.y = -this.currentRotation;
+            this.playerNameMesh.rotation.z = -this.currentBankAngle;
+            this.playerNameMesh.rotation.x = this.isJumping ? 0.2 : 0;
+        }
 
         // Update bike light position - now relative to container position
         const lightOffset = new THREE.Vector3(
@@ -769,6 +792,23 @@ export class LightCycle {
         
         // Clean up all trails completely
         this.cleanupTrails();
+        
+        // Clean up player name mesh
+        if (this.playerNameMesh) {
+            if (this.playerNameMesh.material) {
+                if (Array.isArray(this.playerNameMesh.material)) {
+                    this.playerNameMesh.material.forEach(m => m.dispose());
+                } else {
+                    const material = this.playerNameMesh.material as THREE.MeshBasicMaterial;
+                    if (material.map) material.map.dispose();
+                    material.dispose();
+                }
+            }
+            if (this.playerNameMesh.geometry) {
+                this.playerNameMesh.geometry.dispose();
+            }
+            this.playerNameMesh = null;
+        }
         
         // Remove bike model and dispose of resources
         if (this.modelContainer) {
@@ -1155,5 +1195,72 @@ export class LightCycle {
         if (this.trailLine) {
             this.trailLine.visible = false;
         }
+    }
+
+    // Method to create the player name text mesh
+    private createPlayerNameMesh(): void {
+        if (!this.playerName || !this.modelContainer) return;
+        
+        // Create a canvas for the text
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) return;
+        
+        // Set canvas dimensions
+        canvas.width = 256;
+        canvas.height = 64;
+        
+        // Configure font and styling
+        context.font = 'bold 36px Arial';
+        context.fillStyle = '#ffffff';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        
+        // Add a background/outline for better visibility
+        context.strokeStyle = '#000000';
+        context.lineWidth = 4;
+        context.strokeText(this.playerName, canvas.width / 2, canvas.height / 2);
+        
+        // Fill the text
+        context.fillText(this.playerName, canvas.width / 2, canvas.height / 2);
+        
+        // Create texture from canvas
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        
+        // Create material with the texture
+        const material = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false // Ensures text always renders on top
+        });
+        
+        // Create mesh with a simple plane geometry
+        const geometry = new THREE.PlaneGeometry(10, 2.5);
+        this.playerNameMesh = new THREE.Mesh(geometry, material);
+        
+        // Position the name above the bike
+        this.playerNameMesh.position.y = this.NAME_HEIGHT;
+        
+        // Add to the bike container so it moves with the bike
+        this.modelContainer.add(this.playerNameMesh);
+    }
+    
+    // Update player name text
+    setPlayerName(name: string): void {
+        this.playerName = name;
+        
+        // If we already have a name mesh, update it
+        if (this.playerNameMesh) {
+            this.modelContainer.remove(this.playerNameMesh);
+            this.playerNameMesh = null;
+            this.createPlayerNameMesh();
+        }
+    }
+    
+    // Get player name
+    getPlayerName(): string {
+        return this.playerName;
     }
 } 
