@@ -6,18 +6,21 @@ interface MinimapProps {
     arenaSize: number;
     trailPoints?: { x: number; z: number }[];
     enemyPositions?: { id: string, position: { x: number; z: number } }[];
+    portalPosition?: { x: number; z: number } | null;
 }
 
-export const Minimap = ({ 
-    playerPosition, 
-    arenaSize, 
+export const Minimap = ({
+    playerPosition,
+    arenaSize,
     trailPoints = [],
-    enemyPositions = []
+    enemyPositions = [],
+    portalPosition = null
 }: MinimapProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const MINIMAP_SIZE = 150;
     const PLAYER_DOT_SIZE = 4;
     const ENEMY_DOT_SIZE = 3;
+    const PORTAL_DOT_SIZE = 5;
     const TRAIL_WIDTH = 2;
 
     useEffect(() => {
@@ -37,36 +40,31 @@ export const Minimap = ({
         ctx.strokeRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
 
         // Convert world coordinates to minimap coordinates
-        // This scaling factor is critical - need to use the actual arena size
         const scale = MINIMAP_SIZE / arenaSize;
         const worldToMinimap = (pos: { x: number; z: number }) => ({
             x: (pos.x + arenaSize / 2) * scale,
             y: (pos.z + arenaSize / 2) * scale
         });
 
-        // Draw boundaries - this helps visualize the actual play area
+        // Draw boundaries
         const halfSize = arenaSize / 2;
         const boundaries = [
-            { x: -halfSize, z: -halfSize }, // Bottom-left
-            { x: halfSize, z: -halfSize },  // Bottom-right
-            { x: halfSize, z: halfSize },   // Top-right
-            { x: -halfSize, z: halfSize },  // Top-left
-            { x: -halfSize, z: -halfSize }  // Back to start
+            { x: -halfSize, z: -halfSize },
+            { x: halfSize, z: -halfSize },
+            { x: halfSize, z: halfSize },
+            { x: -halfSize, z: halfSize },
+            { x: -halfSize, z: -halfSize }
         ];
 
-        // Draw boundary
         ctx.beginPath();
-        ctx.strokeStyle = '#ff0000'; // Red to distinguish from trail
+        ctx.strokeStyle = '#ff0000';
         ctx.lineWidth = 1;
-        
         const startBoundary = worldToMinimap(boundaries[0]);
         ctx.moveTo(startBoundary.x, startBoundary.y);
-        
         for (let i = 1; i < boundaries.length; i++) {
             const point = worldToMinimap(boundaries[i]);
             ctx.lineTo(point.x, point.y);
         }
-        
         ctx.stroke();
 
         // Draw trail
@@ -74,24 +72,19 @@ export const Minimap = ({
             ctx.beginPath();
             ctx.strokeStyle = '#0fbef2';
             ctx.lineWidth = TRAIL_WIDTH;
-            
             const startPoint = worldToMinimap(trailPoints[0]);
             ctx.moveTo(startPoint.x, startPoint.y);
-            
             for (let i = 1; i < trailPoints.length; i++) {
                 const point = worldToMinimap(trailPoints[i]);
                 ctx.lineTo(point.x, point.y);
             }
-            
             ctx.stroke();
         }
 
         // Draw enemy positions
         if (enemyPositions.length > 0) {
-            ctx.fillStyle = '#ff3333'; // Bright red for enemies
-            
+            ctx.fillStyle = '#ff3333';
             enemyPositions.forEach(enemy => {
-                // Skip enemies at or very close to (0,0) as they are likely respawning
                 if (Math.abs(enemy.position.x) < 1 && Math.abs(enemy.position.z) < 1) {
                     return;
                 }
@@ -100,6 +93,18 @@ export const Minimap = ({
                 ctx.arc(enemyPos.x, enemyPos.y, ENEMY_DOT_SIZE, 0, Math.PI * 2);
                 ctx.fill();
             });
+        }
+
+        // Draw portal position
+        if (portalPosition) {
+            const portalPosMinimap = worldToMinimap(portalPosition);
+            ctx.fillStyle = '#00ffff'; // Cyan color for portal
+            ctx.strokeStyle = '#ffffff'; // White border
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(portalPosMinimap.x, portalPosMinimap.y, PORTAL_DOT_SIZE, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
         }
 
         // Draw player position
@@ -116,7 +121,7 @@ export const Minimap = ({
         ctx.fillText(`Player: ${Math.round(playerPosition.x)},${Math.round(playerPosition.z)}`, 5, 20);
         ctx.fillText(`Enemies: ${enemyPositions.length}`, 5, 30);
 
-    }, [playerPosition, arenaSize, trailPoints, enemyPositions]);
+    }, [playerPosition, arenaSize, trailPoints, enemyPositions, portalPosition]);
 
     return (
         <>

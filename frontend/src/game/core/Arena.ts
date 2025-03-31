@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { Portal } from './Portal';
 
 interface ArenaConfig {
     size: number;
@@ -11,6 +12,7 @@ export class Arena {
     private scene: THREE.Scene;
     private world: CANNON.World;
     private config: ArenaConfig;
+    private portal: Portal | null = null;
 
     constructor(scene: THREE.Scene, world: CANNON.World, config: ArenaConfig) {
         this.scene = scene;
@@ -25,10 +27,17 @@ export class Arena {
 
         // We only set up lighting here - ground is handled by Ground.tsx
         this.createLighting();
+        
+        // Create the portal
+        this.createPortal();
     }
 
     getConfig(): ArenaConfig {
         return this.config;
+    }
+    
+    getPortal(): Portal | null {
+        return this.portal;
     }
 
     createLighting() {
@@ -56,6 +65,29 @@ export class Arena {
             this.scene.add(pointLight);
         });
     }
+    
+    private createPortal() {
+        // New radius for the portal
+        const portalRadius = 30;
+        
+        // Create a portal positioned at the edge of the arena, touching the floor
+        const portalPosition = new THREE.Vector3(
+            this.config.size / 850, // Position at 1/3 of the arena size on X axis
+            portalRadius - 25, // Set Y position so the bottom touches the ground (y=0)
+            this.config.size / 2.5 // Position at 1/3 of the arena size on Z axis
+        );
+        
+        // Create portal with blue glow, larger size, and no rotation
+        const portalConfig = {
+            position: portalPosition,
+            rotation: new THREE.Euler(0, 0, 0), // No rotation, portal stands straight
+            radius: portalRadius, // Increased portal radius
+            color: 0x0fbef2, // Tron blue color
+            targetUrl: 'http://portal.pieter.com'
+        };
+        
+        this.portal = new Portal(this.scene, this.world, portalConfig);
+    }
 
     dispose() {
         // Clean up resources
@@ -69,5 +101,11 @@ export class Arena {
                 }
             }
         });
+        
+        // Dispose portal if it exists
+        if (this.portal) {
+            this.portal.dispose();
+            this.portal = null;
+        }
     }
 } 

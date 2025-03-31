@@ -220,6 +220,7 @@ export const GameScene = () => {
     const [killMessages, setKillMessages] = useState<Array<{ killer: string; victim: string; timestamp: number }>>([]);
     const [chatMessages, setChatMessages] = useState<Array<{ player_name: string; message: string; timestamp: number }>>([]);
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [portalPosition, setPortalPosition] = useState<{ x: number; z: number } | null>(null);
     const scene = useRef<THREE.Scene>();
     const game = useRef<TronGame>();
     const gameClient = useRef<GameClient>();
@@ -384,6 +385,17 @@ export const GameScene = () => {
         };
     }, []);
 
+    useEffect(() => {
+        // Fetch portal position once the game starts
+        if (gameStarted && game.current) {
+            const portal = game.current.getArena()?.getPortal();
+            if (portal) {
+                const pos = portal.getPosition();
+                setPortalPosition({ x: pos.x, z: pos.z });
+            }
+        }
+    }, [gameStarted]);
+
     return (
         <>
             <KeyboardControls
@@ -404,6 +416,8 @@ export const GameScene = () => {
                                 position={[0, 8, 25]}
                                 rotation={[-0.3, 0, 0]}
                                 fov={75}
+                                near={0.1} // Set near clipping plane
+                                far={5000} // Increase far clipping plane significantly
                             />
                             {gameStarted && game.current && gameClient.current && (
                                 <GameRenderer 
@@ -424,22 +438,24 @@ export const GameScene = () => {
                 onOpenChat={() => setIsChatOpen(true)}
             />
             {gameStarted && (
-                <>
-                    <Minimap 
-                        playerPosition={playerPosition} 
-                        arenaSize={arenaSize} 
-                        trailPoints={trailPoints}
-                        enemyPositions={enemyPositions}
-                    />
-                    <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />
-                    <KillFeed messages={killMessages} />
-                    <ChatBox
-                        messages={chatMessages}
-                        onSendMessage={handleSendChatMessage}
-                        isOpen={isChatOpen}
-                        onClose={() => setIsChatOpen(false)}
-                    />
-                </>
+                <Minimap 
+                    playerPosition={playerPosition}
+                    arenaSize={arenaSize}
+                    trailPoints={trailPoints}
+                    enemyPositions={enemyPositions}
+                    portalPosition={portalPosition}
+                />
+            )}
+            <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />
+            <PerformanceDisplay />
+            <KillFeed messages={killMessages} />
+            {isChatOpen && (
+                <ChatBox 
+                    messages={chatMessages} 
+                    isOpen={isChatOpen}
+                    onClose={() => setIsChatOpen(false)} 
+                    onSendMessage={handleSendChatMessage} 
+                />
             )}
         </>
     );

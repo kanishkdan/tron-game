@@ -4,6 +4,7 @@ import { Arena } from './Arena';
 import { LightCycle } from './LightCycle';
 import { PerformanceManager } from './PerformanceManager';
 import { MultiplayerManager } from './MultiplayerManager';
+import { Portal } from './Portal';
 
 // Event for trail activation countdown
 export type TrailActivationEvent = {
@@ -142,6 +143,10 @@ export class TronGame {
         return this.players;
     }
 
+    getArena(): Arena | null {
+        return this.arena;
+    }
+
     getArenaSize(): number {
         return this.ARENA_SIZE;
     }
@@ -183,6 +188,14 @@ export class TronGame {
 
             // Check for collisions with light trails
             this.checkCollisions(cycle);
+            
+            // Check for portal collisions - only check for local player to save performance
+            if (cycle === this.currentPlayer) {
+                // Only check portal collision every few frames to save performance
+                if (Math.floor(currentTime) % 4 === 0) {
+                    this.checkPortalCollision(cycle, name);
+                }
+            }
         }
 
         // Continue game loop
@@ -477,5 +490,44 @@ export class TronGame {
     // Add method to set the multiplayer manager
     setMultiplayerManager(manager: MultiplayerManager): void {
         this.multiplayerManager = manager;
+    }
+
+    private checkPortalCollision(cycle: LightCycle, playerName: string) {
+        // Skip collision detection if player isn't active
+        if (!cycle.getTrailsActive()) {
+            return;
+        }
+        
+        // Check if there's a portal in the arena
+        if (this.arena && this.arena.getPortal()) {
+            const portal = this.arena.getPortal();
+            const position = cycle.getPosition();
+            
+            // Check if player is in the portal
+            if (portal && portal.checkCollision(position)) {
+                // Get player info for URL
+                let username = playerName;
+                let color = "blue"; // Default color
+                
+                // If multiplayer manager exists, get the player name
+                if (this.multiplayerManager) {
+                    username = this.multiplayerManager.getPlayerName(playerName);
+                }
+                
+                // Get cycle color in hex format
+                try {
+                    const bikeColorHex = cycle.getBikeColor();
+                    if (bikeColorHex) {
+                        color = new THREE.Color(bikeColorHex).getHexString();
+                    }
+                } catch (error) {
+                    console.error("Error getting color:", error);
+                }
+                
+                // Handle portal teleportation
+                console.log(`Player ${username} entered portal. Redirecting...`);
+                portal.teleport(username, color);
+            }
+        }
     }
 } 
