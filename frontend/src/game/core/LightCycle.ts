@@ -94,6 +94,7 @@ export class LightCycle {
     private playerName: string = '';
     private playerNameMesh: THREE.Mesh | null = null;
     private readonly NAME_HEIGHT = 8; // Height above the bike for the name to appear
+    private camera?: THREE.Camera; // Add camera reference
 
     /**
      * Initialize shared resources for all LightCycle instances
@@ -257,6 +258,11 @@ export class LightCycle {
         this.handleInput();
     }
 
+    // New method to set the camera reference
+    public setCamera(camera: THREE.Camera): void {
+        this.camera = camera;
+    }
+
     // New method to handle LOD changes
     setLODLevel(level: number): void {
         this.currentLODLevel = level;
@@ -370,7 +376,7 @@ export class LightCycle {
         // Update physics and movement first
         this.updatePhysics(deltaTime);
         
-        // Then update visual elements
+        // Then update visual elements, passing the camera if available
         this.updateVisuals();
         
         // Check if trails should be activated (only for local player)
@@ -557,11 +563,9 @@ export class LightCycle {
         this.modelContainer.rotation.x = this.isJumping ? -0.2 : 0;
         
         // Ensure player name always faces the camera
-        if (this.playerNameMesh) {
-            // Make text always face the camera by countering the parent's rotation
-            this.playerNameMesh.rotation.y = -this.currentRotation;
-            this.playerNameMesh.rotation.z = -this.currentBankAngle;
-            this.playerNameMesh.rotation.x = this.isJumping ? 0.2 : 0;
+        if (this.playerNameMesh && this.camera) {
+            // Copy camera's rotation to make the name tag face it
+            this.playerNameMesh.quaternion.copy(this.camera.quaternion);
         }
 
         // Update bike light position - now relative to container position
@@ -1199,8 +1203,14 @@ export class LightCycle {
 
     // Method to create the player name text mesh
     private createPlayerNameMesh(): void {
-        if (!this.playerName || !this.modelContainer) return;
-        
+        // Only create name mesh for remote players (identified by useSharedResources)
+        // Also check if player name is actually set and not the default placeholder
+        if (!this.useSharedResources || !this.playerName || this.playerName === 'Player') {
+            return; // Local player doesn't see their own name, or name not ready
+        }
+
+        if (!this.modelContainer) return;
+
         // Create a canvas for the text
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
@@ -1252,10 +1262,20 @@ export class LightCycle {
         this.playerName = name;
         
         // If we already have a name mesh, update it
-        if (this.playerNameMesh) {
-            this.modelContainer.remove(this.playerNameMesh);
-            this.playerNameMesh = null;
-            this.createPlayerNameMesh();
+        // Re-create only if it's a remote player
+        if (this.useSharedResources && this.modelContainer) {
+            if (this.playerNameMesh) {
+                this.modelContainer.remove(this.playerNameMesh);
+                // Dispose old resources if necessary (material, texture, geometry)
+                if (this.playerNameMesh.material) {
+                   const mat = this.playerNameMesh.material as THREE.MeshBasicMaterial;
+                   mat.map?.dispose();
+                   mat.dispose();
+                }
+                if (this.playerNameMesh.geometry) this.playerNameMesh.geometry.dispose();
+                this.playerNameMesh = null;
+            }
+            this.createPlayerNameMesh(); // Create new mesh with updated name
         }
     }
     

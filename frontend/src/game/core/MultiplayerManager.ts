@@ -32,6 +32,7 @@ export class MultiplayerManager {
     private playerNames: Map<string, string> = new Map();
     private isGameStarted: boolean = false;
     private playerStarted: Set<string> = new Set();
+    private camera?: THREE.Camera;
 
     constructor(scene: THREE.Scene, world: CANNON.World) {
         this.scene = scene;
@@ -98,9 +99,16 @@ export class MultiplayerManager {
                 this.world,
                 () => console.log(`Remote player ${playerId} collision`),
                 undefined,
-                true // Use shared resources flag to activate trails immediately
+                true, // Use shared resources flag to activate trails immediately
+                undefined, // No custom color for remote players (can be added later)
+                playerName || playerId // Pass the player name here
             );
             
+            // Set the camera for the remote player's cycle
+            if (this.camera) {
+                cycle.setCamera(this.camera);
+            }
+
             this.remotePlayers.set(playerId, cycle);
             
             if (position) {
@@ -444,5 +452,10 @@ export class MultiplayerManager {
         
         // Clean up shared resources when clearing everything
         LightCycle.cleanupSharedResources();
+    }
+
+    // Add method to set the camera
+    setCamera(camera: THREE.Camera) {
+        this.camera = camera;
     }
 } 

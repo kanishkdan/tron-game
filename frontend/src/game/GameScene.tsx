@@ -221,6 +221,7 @@ export const GameScene = () => {
     const [chatMessages, setChatMessages] = useState<Array<{ player_name: string; message: string; timestamp: number }>>([]);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [portalPosition, setPortalPosition] = useState<{ x: number; z: number } | null>(null);
+    const [camera, setCamera] = useState<THREE.PerspectiveCamera | null>(null);
     const [returnPortalUrl, setReturnPortalUrl] = useState<string | null>(null);
     const [returnPortalPosition, setReturnPortalPosition] = useState<{ x: number; z: number } | null>(null);
     const scene = useRef<THREE.Scene>();
@@ -347,10 +348,17 @@ export const GameScene = () => {
                 physicsWorld.defaultContactMaterial.friction = 0.1;
                 physicsWorld.defaultContactMaterial.restitution = 0.2;
                 
+                // Ensure camera is available before creating TronGame
+                if (!camera) {
+                    console.error('Camera not ready when starting game');
+                    return;
+                }
+                
                 // Create game with trail activation callback
                 game.current = new TronGame(
                     scene.current, 
                     physicsWorld,
+                    camera,
                     handleTrailActivation,
                     handleKill,
                     returnPortalUrl
@@ -376,6 +384,9 @@ export const GameScene = () => {
                 // Create and link multiplayer manager
                 const mpManager = new MultiplayerManager(scene.current, physicsWorld);
                 mpManager.setLocalPlayerId(gameClient.current.getPlayerId() || '', name);
+                if (camera) {
+                    mpManager.setCamera(camera);
+                }
                 game.current.setMultiplayerManager(mpManager);
                 multiplayerManager.current = mpManager;
                 
@@ -491,6 +502,10 @@ export const GameScene = () => {
                 ]}
             >
                 <Canvas shadows onCreated={(state: RootState) => { 
+                    // Store camera reference in state
+                    if (state.camera instanceof THREE.PerspectiveCamera) {
+                        setCamera(state.camera);
+                    }
                     scene.current = state.scene;
                     console.log('[Canvas] Scene initialized:', !!state.scene);
                     // Set scene ready state to trigger effect

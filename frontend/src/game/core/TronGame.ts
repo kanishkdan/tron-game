@@ -15,6 +15,7 @@ export type TrailActivationEvent = {
 export class TronGame {
     private scene: THREE.Scene;
     private world: CANNON.World;
+    private camera: THREE.Camera;
     private player: LightCycle | null = null;
     private arena: Arena | null = null;
     private players: Map<string, LightCycle> = new Map();
@@ -31,12 +32,14 @@ export class TronGame {
     constructor(
         scene: THREE.Scene, 
         world: CANNON.World,
+        camera: THREE.Camera,
         onTrailActivationUpdate?: (event: TrailActivationEvent) => void,
         onKill?: (killerName: string, victimName: string) => void,
         returnPortalUrl: string | null = null
     ) {
         this.scene = scene;
         this.world = world;
+        this.camera = camera;
         this.onTrailActivationUpdate = onTrailActivationUpdate;
         this.onKill = onKill;
         this.returnPortalUrl = returnPortalUrl;
@@ -84,6 +87,9 @@ export class TronGame {
             customColor // Pass custom color if provided
         );
         
+        // Set the camera for the local player's cycle
+        playerCycle.setCamera(this.camera);
+
         this.players.set(playerName, playerCycle);
         this.currentPlayer = playerCycle;
 
@@ -505,6 +511,10 @@ export class TronGame {
     // Add method to set the multiplayer manager
     setMultiplayerManager(manager: MultiplayerManager): void {
         this.multiplayerManager = manager;
+        // Pass the camera to the multiplayer manager
+        if (this.camera) {
+            this.multiplayerManager.setCamera(this.camera);
+        }
     }
 
     private checkPortalCollision(cycle: LightCycle, playerName: string) {
