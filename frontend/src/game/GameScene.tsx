@@ -447,14 +447,13 @@ export const GameScene = () => {
             )}
             <TrailActivationDisplay trailActivationEvents={trailActivationEvents} />
             <KillFeed messages={killMessages} />
-            {isChatOpen && (
-                <ChatBox 
+            <ChatBox 
                     messages={chatMessages} 
                     isOpen={isChatOpen}
                     onClose={() => setIsChatOpen(false)} 
                     onSendMessage={handleSendChatMessage} 
                 />
-            )}
+            )
         </>
     );
 }; 
