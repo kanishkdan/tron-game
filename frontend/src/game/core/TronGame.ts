@@ -5,6 +5,7 @@ import { LightCycle } from './LightCycle';
 import { PerformanceManager } from './PerformanceManager';
 import { MultiplayerManager } from './MultiplayerManager';
 import { Portal } from './Portal';
+import { SoundManager } from './SoundManager';
 
 // Event for trail activation countdown
 export type TrailActivationEvent = {
@@ -28,6 +29,7 @@ export class TronGame {
     private multiplayerManager: MultiplayerManager | null = null;
     private onKill?: (killerName: string, victimName: string) => void;
     private returnPortalUrl: string | null = null;
+    private soundManager: SoundManager;
 
     constructor(
         scene: THREE.Scene, 
@@ -63,6 +65,8 @@ export class TronGame {
         } else {
             console.log('[TronGame] Not creating return portal. returnPortalUrl:', this.returnPortalUrl, 'arena exists:', !!this.arena);
         }
+
+        this.soundManager = SoundManager.getInstance();
     }
 
     start(playerName: string, customColor?: number) {
@@ -96,6 +100,13 @@ export class TronGame {
         // Start game loop
         this.lastUpdateTime = performance.now();
         this.update();
+
+        this.handleGameStart();
+    }
+
+    private handleGameStart(): void {
+        // Start background music immediately
+        this.soundManager.startBackgroundMusic();
     }
 
     // Add a method to add remote players with delayed trail activation
@@ -338,6 +349,8 @@ export class TronGame {
                 // Check if this is the current player
                 if (cycle === this.currentPlayer) {
                     isCurrentPlayer = true;
+                    // Dispatch local_player_death event
+                    window.dispatchEvent(new Event('local_player_death'));
                 }
                 break;
             }
@@ -587,5 +600,18 @@ export class TronGame {
                 returnPortal.teleport(username, color);
             }
         }
+    }
+
+    public cleanup(): void {
+        // Clean up resources
+        for (const cycle of this.players.values()) {
+            cycle.cleanupTrails();
+            cycle.dispose();
+        }
+        this.players.clear();
+        this.currentPlayer = null;
+        this.arena = null;
+        this.multiplayerManager = null;
+        this.soundManager.cleanup();
     }
 } 

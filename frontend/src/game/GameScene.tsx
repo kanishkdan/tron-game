@@ -16,6 +16,115 @@ import { KillFeed } from '../components/KillFeed';
 import { ChatBox } from '../components/ChatBox';
 import { GameUI } from '../components/GameUI';
 
+// TTS Helper function
+const playTTS = (text: string, playerName?: string) => {
+  if ('speechSynthesis' in window) {
+    const utterance = new SpeechSynthesisUtterance(text.replace('{playername}', playerName || ''));
+    
+    // Attempt to find a robotic/suitable voice
+    const voices = window.speechSynthesis.getVoices();
+    
+    // Prioritize voices in this order:
+    // 1. English robotic voices
+    // 2. English non-gendered voices
+    // 3. Any English voice
+    let selectedVoice = voices.find(voice => 
+      voice.lang.startsWith('en') && 
+      /robot|google|automaton|mechanic|neural|synthesized|artificial/i.test(voice.name)
+    ) || 
+    voices.find(voice => 
+      voice.lang.startsWith('en') && 
+      !/female|male|girl|boy|woman|man/i.test(voice.name)
+    ) ||
+    voices.find(voice => 
+      voice.lang.startsWith('en')
+    );
+
+    if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        console.log('Selected voice:', selectedVoice.name); // Debug log
+    }
+    
+    // Adjust voice parameters for more robotic feel
+    utterance.rate = 0.75; // Slightly slower
+    utterance.pitch = 1.0; // Lower pitch but not too low
+    utterance.volume = 0.9; // Slightly lower volume
+
+    // Ensure voices are loaded (needed on some browsers)
+    if (voices.length === 0) {
+        window.speechSynthesis.onvoiceschanged = () => {
+            const updatedVoices = window.speechSynthesis.getVoices();
+            selectedVoice = updatedVoices.find(voice => 
+              voice.lang.startsWith('en') && 
+              /robot|google|automaton|mechanic|neural|synthesized|artificial/i.test(voice.name)
+            ) || 
+            updatedVoices.find(voice => 
+              voice.lang.startsWith('en') && 
+              !/female|male|girl|boy|woman|man/i.test(voice.name)
+            ) ||
+            updatedVoices.find(voice => 
+              voice.lang.startsWith('en')
+            );
+            
+            if (selectedVoice) {
+                utterance.voice = selectedVoice;
+                console.log('Selected voice after loading:', selectedVoice.name); // Debug log
+            }
+            window.speechSynthesis.speak(utterance);
+        };
+    } else {
+        window.speechSynthesis.speak(utterance);
+    }
+  } else {
+    console.warn("Browser doesn't support Speech Synthesis.");
+  }
+};
+
+// Death remarks for when player dies
+const deathRemarks = [
+    // Tron-themed dark remarks
+    "De-resolution complete. Just like your dignity.",
+    "End of line, end of your pathetic existence.",
+    "User program terminated. User brain cells: nonexistent.",
+    "Identity disc compromised. Like your skill level.",
+    "Re-calibration required. Maybe try a game for toddlers?",
+    "System error. Your existence is the bug in the code.",
+    "Cycle destroyed. Just like your hopes and dreams.",
+    "You fight for the users... But they're all laughing at you.",
+    
+    // Savage roasts
+    "Did you forget how to ride a bike, or just how to play the game?",
+    "Your driving skills make a dumpster fire look organized.",
+    "I've seen better driving from a headless chicken.",
+    "Your lightcycle moves like it's carrying the weight of your failure.",
+    "Did you get your license from the bottom of a trash compactor?",
+    "Your trail looks like the EKG of your dying skill level.",
+    "A three-legged sloth could outmaneuver you blindfolded.",
+    "Your lightcycle needs therapy after being piloted by someone like you.",
+    "That was less graceful than a hippo in an ice skating competition.",
+    "Your driving style screams 'I peaked in the tutorial.'",
+    "Did you learn to drive while heavily sedated?",
+    "Your trail resembles your life choices: chaotic and ultimately fatal.",
+    "That was about as smooth as gargling broken glass.",
+    "Your lightcycle is filing for emotional damage compensation.",
+    
+    // Darker humor
+    "You died as you lived: disappointingly.",
+    "The Grid has standards. You clearly don't.",
+    "That crash was the most impressive thing you've done all game.",
+    "If 'failure' had a mascot, you'd be on the cereal box.",
+    "You're the reason why games should have an 'ultra-beginner' difficulty.",
+    "Your performance is why AI will replace humans.",
+    "The only thing worse than your death is your gameplay.",
+    "You make the NPCs look like e-sports champions.",
+    "Your skills have been deleted. Nothing of value was lost.",
+    "You're so bad even your lightcycle wanted to crash.",
+    "Game over. Life suggestion: also over?",
+    "That wasn't just a crash, it was an existential surrender.",
+    "You didn't just hit a wall, you hit rock bottom.",
+    "The Grid rejects you. So does everyone watching you play."
+];
+
 // Lighting component to handle all scene lighting
 const SceneLighting = () => {
     return (
@@ -299,6 +408,9 @@ export const GameScene = () => {
             setPlayerName(name);
             setGameStarted(true);
             
+            // Play welcome message
+            playTTS("Hey {playername}, welcome to the grid.", name);
+            
             // Add event listener for kill events
             gameClient.current.on('player_kill', (data) => {
                 console.log(`Received kill event from server: ${data.killer} killed ${data.victim}`);
@@ -401,6 +513,21 @@ export const GameScene = () => {
             // Handle connection error (show message to user, etc.)
         }
     };
+
+    // Add useEffect for death remarks
+    useEffect(() => {
+        const handlePlayerDeath = () => {
+            if (playerName) {
+                const randomRemark = deathRemarks[Math.floor(Math.random() * deathRemarks.length)];
+                playTTS(randomRemark, playerName);
+            }
+        };
+
+        window.addEventListener('local_player_death', handlePlayerDeath);
+        return () => {
+            window.removeEventListener('local_player_death', handlePlayerDeath);
+        };
+    }, [playerName]);
 
     const handlePositionUpdate = (pos: { x: number; y: number; z: number }, trail: { x: number; z: number }[]) => {
         setPlayerPosition(pos);

@@ -4,6 +4,7 @@ import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import * as CANNON from 'cannon-es';
 import { useKeyboardControls } from '@react-three/drei';
 import { ColorUtils, TronColor } from '../utils/ColorUtils';
+import { SoundManager } from './SoundManager';
 
 // LOD level constants
 export const LOD_HIGH = 0;
@@ -96,6 +97,10 @@ export class LightCycle {
     private readonly NAME_HEIGHT = 8; // Height above the bike for the name to appear
     private camera?: THREE.Camera; // Add camera reference
 
+    private soundManager: SoundManager;
+
+    private isMoving: boolean = false;
+
     /**
      * Initialize shared resources for all LightCycle instances
      * This reduces memory usage and CPU/GPU load when creating multiple bikes
@@ -170,6 +175,7 @@ export class LightCycle {
         customColor?: number,
         playerName: string = 'Player' // New parameter for player name
     ) {
+        this.soundManager = SoundManager.getInstance();
         // Store the player name
         this.playerName = playerName;
         
