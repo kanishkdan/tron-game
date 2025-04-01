@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import * as CANNON from 'cannon-es';
+import { Vec3 } from 'cannon-es';
 import { useKeyboardControls } from '@react-three/drei';
 import { ColorUtils, TronColor } from '../utils/ColorUtils';
 import { SoundManager } from './SoundManager';
@@ -16,6 +17,22 @@ declare global {
     interface Window {
         gameRenderer?: THREE.WebGLRenderer;
     }
+}
+
+// Define interfaces with optional redirectUrl
+interface CannonBodyWithUserData extends CANNON.Body {
+    userData?: { 
+        isPlayer?: boolean;
+        isRamp?: boolean;
+        isRedirectShape?: boolean; // New flag
+        type?: string; 
+        redirectUrl?: string; // Optional URL
+    };
+}
+interface CannonCollisionEvent {
+    body: CannonBodyWithUserData;
+    target: CannonBodyWithUserData;
+    contact: CANNON.ContactEquation;
 }
 
 export class LightCycle {
@@ -74,7 +91,7 @@ export class LightCycle {
     private jumpStartTime = 0;
     private bikeColor: TronColor;
     private readonly GROUND_HEIGHT = 0.05;
-    private readonly PHYSICS_HEIGHT = 0.25; // New constant for physics body height
+    private readonly PHYSICS_HEIGHT = 1.5; // New constant for physics body height
     
     // New properties for trail activation cooldown
     private readonly TRAIL_ACTIVATION_DELAY = 5000; // 5 seconds in milliseconds
@@ -100,6 +117,8 @@ export class LightCycle {
     private soundManager: SoundManager;
 
     private isMoving: boolean = false;
+
+    private bodyMaterial: CANNON.Material; // Store body material
 
     /**
      * Initialize shared resources for all LightCycle instances
@@ -213,37 +232,91 @@ export class LightCycle {
         this.trailsActive = useSharedResources; // Immediate trails for remote players, delayed for local
         this.initLightTrail();
 
-        // Create physics body with reduced height
-        const shape = new CANNON.Box(new CANNON.Vec3(3, this.PHYSICS_HEIGHT, 6));
+        // Create physics body
+        const bikeWidth = 3;
+        const bikeHeight = 1.5;
+        const bikeLength = 6;
+        const shape = new CANNON.Box(new CANNON.Vec3(bikeWidth / 2, bikeHeight / 2, bikeLength / 2)); // Use half-extents
+
+        // Create and store the body material
+        this.bodyMaterial = new CANNON.Material({ friction: 0.5, restitution: 0.1 });
+
         this.body = new CANNON.Body({
             mass: 1,
-            position: new CANNON.Vec3(initialPosition.x, this.PHYSICS_HEIGHT, initialPosition.z),
+            position: new CANNON.Vec3(initialPosition.x, bikeHeight / 2, initialPosition.z),
             shape: shape,
             linearDamping: 0.5,
             angularDamping: 0.8,
             fixedRotation: true,
-            material: new CANNON.Material({
-                friction: 0.5,
-                restitution: 0.1
-            })
+            material: this.bodyMaterial, // Use stored material
+            // Add userData to identify player bikes
+            // userData: { isPlayer: true } // Assign after creation
         });
-        
-        // Ensure initial velocity is set correctly
+        // Assign userData after creation
+        (this.body as CannonBodyWithUserData).userData = { isPlayer: true };
+
         this.currentSpeed = this.MIN_SPEED;
         this.body.velocity.set(0, 0, -this.MIN_SPEED);
         physicsWorld.addBody(this.body);
 
-        // Create ground contact material with adjusted properties
-        const groundMaterial = new CANNON.Material();
-        const contactMaterial = new CANNON.ContactMaterial(
-            groundMaterial,
-            this.body.material || new CANNON.Material(),
-            {
-                friction: 0.5,
-                restitution: 0.1,
-                contactEquationStiffness: 1e6,
-                contactEquationRelaxation: 3
+        // --- Add Collision Listener for Ramp Interaction and Redirect Shapes ---
+        this.body.addEventListener('collide', (event: any) => { 
+            const typedEvent = event as CannonCollisionEvent; 
+            const otherBody = typedEvent.body === this.body ? typedEvent.target : typedEvent.body;
+
+            // --- Handle Redirect Shapes (Block/Sphere) --- 
+            if (otherBody.userData?.isRedirectShape && otherBody.userData.redirectUrl) {
+                console.log("Collision with redirect shape:", otherBody.userData.type);
+                window.location.href = otherBody.userData.redirectUrl; // Redirect immediately
+                return; // Stop further processing for this collision
             }
+
+            // --- Handle Ramps --- 
+            if (otherBody.userData?.isRamp) {
+                const contact = typedEvent.contact;
+                if (!contact) return; 
+                
+                const contactNormal = contact.ni; 
+                const worldNormal = new CANNON.Vec3(contactNormal.x, contactNormal.y, contactNormal.z);
+                const rampQuaternion = otherBody.quaternion;
+                const rampHeight = 25; 
+                const rampLength = 75;
+                const localSlopeNormal = new CANNON.Vec3(0, Math.sin(Math.atan2(rampHeight, rampLength)), -Math.cos(Math.atan2(rampHeight, rampLength))).normalize();
+                
+                // @ts-ignore <-- Add ts-ignore to suppress the linter error below
+                const worldSlopeNormal = rampQuaternion.vmult(localSlopeNormal as CANNON.Vec3); 
+                const dotSlope = worldNormal.dot(worldSlopeNormal); 
+                const tolerance = -0.7;
+
+                if (dotSlope > tolerance) { // If dot product is not strongly negative, it's a non-sloping face
+                    console.log("Collision with non-sloping ramp face! Dot:", dotSlope);
+                    // Check if this ramp has a redirect URL
+                    if (otherBody.userData.redirectUrl) {
+                        console.log("Redirecting to ramp URL:", otherBody.userData.redirectUrl);
+                        window.location.href = otherBody.userData.redirectUrl;
+                    } else {
+                        // No URL, just crash
+                        console.log("Crashing on non-sloping ramp face.");
+                        this.onCollision?.(); 
+                        if (this.modelContainer) { 
+                            this.modelContainer.visible = false; 
+                        }
+                    }
+                 }
+                 // else: Collision is likely with the sloping face, allow normal physics
+            }
+        });
+        // --- End Collision Listener ---
+
+        // Create ground contact material
+        const groundMaterial = new CANNON.Material("ground"); // Give ground a name
+         // Add ground material to the physics world if not already done elsewhere
+         // physicsWorld.addMaterial(groundMaterial);
+
+        const contactMaterial = new CANNON.ContactMaterial(
+            groundMaterial, // Assuming ground has this material
+            this.bodyMaterial,
+            { friction: 0.5, restitution: 0.1, contactEquationStiffness: 1e6, contactEquationRelaxation: 3 }
         );
         physicsWorld.addContactMaterial(contactMaterial);
 
@@ -425,20 +498,34 @@ export class LightCycle {
             
             if (jumpProgress >= 1) {
                 this.isJumping = false;
-                this.body.position.y = this.PHYSICS_HEIGHT;
-                this.body.velocity.y = 0;
+                // Let physics handle landing naturally, don't force position
+                // this.body.position.y = this.PHYSICS_HEIGHT;
+                // this.body.velocity.y = 0;
             } else {
-                this.body.velocity.y -= 30 * deltaTime;
+                // Apply downward force (simulating gravity during jump)
+                this.body.velocity.y -= 30 * deltaTime; 
                 
-                if (this.body.position.y < this.PHYSICS_HEIGHT) {
-                    this.body.position.y = this.PHYSICS_HEIGHT;
-                    this.body.velocity.y = 0;
+                // If bike hits ground during jump animation, stop jump
+                // Use ground height check instead of PHYSICS_HEIGHT
+                if (this.body.position.y - this.PHYSICS_HEIGHT / 2 < this.GROUND_HEIGHT) {
+                    this.body.position.y = this.GROUND_HEIGHT + this.PHYSICS_HEIGHT / 2; // Reset to slightly above ground
+                    if(this.body.velocity.y < 0) this.body.velocity.y = 0; // Stop downward velocity
                     this.isJumping = false;
                 }
             }
         } else {
-            this.body.position.y = this.PHYSICS_HEIGHT;
-            this.body.velocity.y = 0;
+            // When not jumping, don't force the bike's Y position.
+            // Let the physics engine handle interactions with surfaces like ramps.
+            // Ground collision check: Ensure bottom of the bike is above ground
+            if (this.body.position.y - this.PHYSICS_HEIGHT / 2 < this.GROUND_HEIGHT) {
+                 this.body.position.y = this.GROUND_HEIGHT + this.PHYSICS_HEIGHT / 2; // Set bottom to ground level
+                 if (this.body.velocity.y < 0) {
+                    this.body.velocity.y = 0;
+                 }
+            }
+            // Removed: 
+            // this.body.position.y = this.PHYSICS_HEIGHT;
+            // this.body.velocity.y = 0;
         }
 
         // Skip trail collision detection during activation phase
@@ -586,148 +673,107 @@ export class LightCycle {
     private updateTrail() {
         if (!this.modelContainer || !this.trailGeometry || !this.trailLine || !this.trailsActive) return;
 
-        const currentPos = this.modelContainer.position;
-        
-        // Add new trail point if we've moved enough or no previous point
-        const shouldAddPoint = !this.lastTrailPoint || 
-            new THREE.Vector3(currentPos.x, 0, currentPos.z)
-                .distanceTo(new THREE.Vector3(
-                    this.lastTrailPoint.x, 
-                    0, 
-                    this.lastTrailPoint.z
-                )) > 2.0; // Reduced minimum distance for more frequent trail points
-        
-        if (shouldAddPoint) {
-            // Create the new point at the bike's current height
-            const newPoint = new THREE.Vector3(
-                currentPos.x, 
-                currentPos.y, // Use actual bike height
-                currentPos.z
-            );
-            
-            // Add new point to trail
+        const currentPos = this.modelContainer.position; // Use visual position which follows physics body
+
+        // Add new trail point if we've moved enough in 3D space
+        const movedEnough = !this.lastTrailPoint ||
+            currentPos.distanceTo(this.lastTrailPoint) > 2.0; // Use 3D distance
+
+        if (movedEnough) {
+            const newPoint = currentPos.clone(); // Clone current visual position
             this.trailPoints.push(newPoint);
             this.lastTrailPoint = newPoint.clone();
-            
-            // Limit trail length - remove just one point at a time for smoother trails
+
             if (this.trailPoints.length > this.MAX_TRAIL_LENGTH) {
                 this.trailPoints.shift();
             }
-            
-            // Only rebuild geometry if we have enough points
+
             if (this.trailPoints.length >= 2) {
                 this.rebuildTrailGeometry();
             }
         }
     }
 
-    // Separate method for rebuilding geometry to improve code organization
     private rebuildTrailGeometry() {
-        if (!this.trailGeometry) return;
-        
-        // Create extruded 3D trail (a flat ribbon with width and height)
+        if (!this.trailGeometry || this.trailPoints.length < 2) return;
+
         const positions: number[] = [];
         const normals: number[] = [];
         const indices: number[] = [];
-        
-        // Need at least 2 points to create a trail
-        if (this.trailPoints.length < 2) return;
-        
-        // Process trail points to create extruded geometry
+        const trailHeight = this.BASE_TRAIL_HEIGHT; // Visual height of the trail ribbon
+        const trailWidth = this.TRAIL_WIDTH / 2; // Use half-width
+
         for (let i = 0; i < this.trailPoints.length; i++) {
-            const point = this.trailPoints[i];
-            
-            // Calculate direction and perpendicular for each segment
-            let segmentDirection, segmentPerpendicular;
-            
+            const p = this.trailPoints[i]; // Current point includes correct Y
+
+            let dir: THREE.Vector3;
             if (i < this.trailPoints.length - 1) {
-                const nextPoint = this.trailPoints[i + 1];
-                segmentDirection = new THREE.Vector3().subVectors(nextPoint, point).normalize();
-            } else if (i > 0) {
-                const prevPoint = this.trailPoints[i - 1];
-                segmentDirection = new THREE.Vector3().subVectors(point, prevPoint).normalize();
+                dir = new THREE.Vector3().subVectors(this.trailPoints[i + 1], p).normalize();
+            } else if (this.trailPoints.length > 1) { // Ensure there's a previous point
+                dir = new THREE.Vector3().subVectors(p, this.trailPoints[i - 1]).normalize();
             } else {
-                continue; // Skip single points
+                 // Default direction if only one segment (e.g., facing forward relative to current rotation)
+                 dir = new THREE.Vector3(Math.sin(this.currentRotation), 0, Math.cos(this.currentRotation)).normalize();
             }
-            
-            segmentPerpendicular = new THREE.Vector3(-segmentDirection.z, 0, segmentDirection.x).normalize();
-            
-            // Calculate the bottom height for this segment
-            const bottomHeight = 0.0;  // Just slightly above the ground
-            const topHeight = this.BASE_TRAIL_HEIGHT;     // Taller, more visible trail
-            
-            // Create the 4 corners of the ribbon segment
-            // Top left
-            positions.push(
-                point.x + segmentPerpendicular.x * this.TRAIL_WIDTH,
-                topHeight,
-                point.z + segmentPerpendicular.z * this.TRAIL_WIDTH
-            );
-            normals.push(segmentPerpendicular.x, 0, segmentPerpendicular.z);
-            
-            // Top right
-            positions.push(
-                point.x - segmentPerpendicular.x * this.TRAIL_WIDTH,
-                topHeight,
-                point.z - segmentPerpendicular.z * this.TRAIL_WIDTH
-            );
-            normals.push(-segmentPerpendicular.x, 0, -segmentPerpendicular.z);
-            
-            // Bottom left
-            positions.push(
-                point.x + segmentPerpendicular.x * this.TRAIL_WIDTH,
-                bottomHeight,
-                point.z + segmentPerpendicular.z * this.TRAIL_WIDTH
-            );
-            normals.push(segmentPerpendicular.x, 0, segmentPerpendicular.z);
-            
-            // Bottom right
-            positions.push(
-                point.x - segmentPerpendicular.x * this.TRAIL_WIDTH,
-                bottomHeight,
-                point.z - segmentPerpendicular.z * this.TRAIL_WIDTH
-            );
-            normals.push(-segmentPerpendicular.x, 0, -segmentPerpendicular.z);
-            
-            // Create faces (triangles) - only if we have a next point
+
+            // Perpendicular in the XZ plane for width
+            const perp = new THREE.Vector3(-dir.z, 0, dir.x).normalize().multiplyScalar(trailWidth);
+            // Up vector (relative to the trail direction - cross product)
+            const up = new THREE.Vector3().crossVectors(dir, perp).normalize().multiplyScalar(trailHeight / 2);
+
+
+            // Calculate 4 vertices for this point in the ribbon, centered around the point's Y
+            const v1 = new THREE.Vector3().copy(p).add(perp).add(up); // Top Left
+            const v2 = new THREE.Vector3().copy(p).sub(perp).add(up); // Top Right
+            const v3 = new THREE.Vector3().copy(p).add(perp).sub(up); // Bottom Left
+            const v4 = new THREE.Vector3().copy(p).sub(perp).sub(up); // Bottom Right
+
+            positions.push(v1.x, v1.y, v1.z);
+            positions.push(v2.x, v2.y, v2.z);
+            positions.push(v3.x, v3.y, v3.z);
+            positions.push(v4.x, v4.y, v4.z);
+
+            // Normals can be simplified or calculated based on face orientation
+            const faceNormal1 = new THREE.Vector3().crossVectors(up, perp).normalize(); // Normal for side faces
+            const faceNormal2 = new THREE.Vector3().copy(up).normalize(); // Normal for top/bottom faces (approx)
+
+            normals.push(faceNormal1.x, faceNormal1.y, faceNormal1.z); // Normal for left edge (+perp side)
+            normals.push(faceNormal1.x, faceNormal1.y, faceNormal1.z); // Normal for right edge (-perp side)
+            normals.push(faceNormal1.x, faceNormal1.y, faceNormal1.z);
+            normals.push(faceNormal1.x, faceNormal1.y, faceNormal1.z);
+
+
+            // Add indices for the segment connecting this point to the next
             if (i < this.trailPoints.length - 1) {
                 const baseIdx = i * 4;
-                
-                // Top face
-                indices.push(baseIdx, baseIdx + 4, baseIdx + 1);
-                indices.push(baseIdx + 1, baseIdx + 4, baseIdx + 5);
-                
-                // Left side
-                indices.push(baseIdx, baseIdx + 2, baseIdx + 4);
-                indices.push(baseIdx + 2, baseIdx + 6, baseIdx + 4);
-                
-                // Right side
-                indices.push(baseIdx + 1, baseIdx + 5, baseIdx + 3);
-                indices.push(baseIdx + 3, baseIdx + 5, baseIdx + 7);
-                
-                // Bottom face
-                indices.push(baseIdx + 2, baseIdx + 3, baseIdx + 6);
-                indices.push(baseIdx + 3, baseIdx + 7, baseIdx + 6);
+                // Side Face Left (v1, v3, v1_next => v3, v3_next, v1_next)
+                indices.push(baseIdx + 0, baseIdx + 2, baseIdx + 4); 
+                indices.push(baseIdx + 2, baseIdx + 6, baseIdx + 4); 
+                // Side Face Right (v2, v2_next, v4 => v4, v2_next, v4_next) - winding matters!
+                indices.push(baseIdx + 1, baseIdx + 5, baseIdx + 3); 
+                indices.push(baseIdx + 3, baseIdx + 5, baseIdx + 7); 
+
+                 // Add top/bottom faces for visual thickness
+                 // Top face: (v1, v1_next, v2 => v2, v1_next, v2_next)
+                 indices.push(baseIdx + 0, baseIdx + 4, baseIdx + 1); 
+                 indices.push(baseIdx + 1, baseIdx + 4, baseIdx + 5); 
+                 // Bottom face: (v3, v4, v3_next => v4, v4_next, v3_next)
+                 indices.push(baseIdx + 2, baseIdx + 3, baseIdx + 6); 
+                 indices.push(baseIdx + 3, baseIdx + 7, baseIdx + 6); 
             }
         }
-        
-        // Update geometry only if we have valid data
-        if (positions.length > 0 && indices.length > 0) {
-            this.trailGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-            this.trailGeometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
-            this.trailGeometry.setIndex(indices);
-            
-            // Clear any previous index or attributes that might be cached
-            this.trailGeometry.index = new THREE.BufferAttribute(new Uint16Array(indices), 1);
-            
-            // Make sure the geometry knows it's changed
-            this.trailGeometry.attributes.position.needsUpdate = true;
-            this.trailGeometry.attributes.normal.needsUpdate = true;
+
+        // Update geometry attributes
+        this.trailGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        this.trailGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+        this.trailGeometry.setIndex(indices);
+
+        this.trailGeometry.computeBoundingSphere();
+        this.trailGeometry.computeBoundingBox(); // Important for culling/updates
+        this.trailGeometry.attributes.position.needsUpdate = true;
+        this.trailGeometry.attributes.normal.needsUpdate = true;
+        if (this.trailGeometry.index) {
             this.trailGeometry.index.needsUpdate = true;
-            
-            // Explicitly compute bounding box/sphere for frustum culling
-            this.trailGeometry.computeBoundingSphere();
-            this.trailGeometry.computeBoundingBox();
         }
     }
 
