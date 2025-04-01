@@ -184,7 +184,7 @@ export class Portal {
         }
         
         // Extra large collision radius for much easier entry (no physics blocking)
-        return distance < 100;
+        return distance < 40;
     }
     
     // Get the target URL with query parameters
