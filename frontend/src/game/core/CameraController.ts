@@ -6,16 +6,16 @@ export class CameraController {
     private target: LightCycle;
     private readonly FOLLOW_DISTANCE = 25;
     private readonly HEIGHT_OFFSET = 8;
-    private readonly LOOK_AHEAD = 12;
+    private readonly LOOK_AHEAD = 10;
     private readonly SMOOTHING = 0.08;
     private readonly TILT_STRENGTH = 0.15;
     private readonly MIN_HEIGHT = 6;
     private readonly MAX_HEIGHT = 15;
     private readonly NATURAL_HEIGHT = 10;
     private readonly NATURAL_FOV = 75;
-    private readonly TURN_HEIGHT_BOOST = 2;
+    private readonly TURN_HEIGHT_BOOST = 0;
     private readonly RETURN_SPEED = 0.05;
-    private readonly MAX_LATERAL_OFFSET = 3;
+    private readonly MAX_LATERAL_OFFSET = 0.3;
     private currentPosition = new THREE.Vector3();
     private currentLookAt = new THREE.Vector3();
     private idealOffset = new THREE.Vector3();
@@ -117,8 +117,11 @@ export class CameraController {
         this.camera.position.copy(this.currentPosition);
         this.camera.lookAt(this.currentLookAt);
 
+        const tiltSmoothness = this.isReturningToNatural ? 
+            Math.min(0.08 * deltaTime, 1) : 
+            Math.min(0.12 * deltaTime, 1);
+        
         const targetTilt = turnDirection * this.TILT_STRENGTH;
-        const tiltSmoothness = this.isReturningToNatural ? 0.08 : 0.12;
         this.camera.rotation.z = THREE.MathUtils.lerp(
             this.camera.rotation.z,
             targetTilt,
