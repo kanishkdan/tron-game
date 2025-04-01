@@ -55,9 +55,12 @@ export class Arena {
 
         // Define URLs, sizes, and FIXED POSITIONS for redirect shapes
         const redirectTargets: { [id: string]: RedirectShapeData } = {
-            "vercel": { emoji: "▲", name: "Vercel", url: "https://vercel.com", size: 25, position: new THREE.Vector3(150, 0, -150) },
+            "Comp AI": { emoji: "💽", name: "Comp AI", url: "https://trycomp.ai", size: 25, position: new THREE.Vector3(150, 0, 150) },
+            "Simplehuman": { emoji: "💌", name: "Simplehuman", url: "https://simplehuman.email/", size: 25, position: new THREE.Vector3(-150, 0, -150) },
+            "photoAI": { emoji: "📸", name: "Photo AI", url: "https://photoai.com/", size: 25, position: new THREE.Vector3(150, 0, -150) },
+            "datafast": { emoji: "📈", name: "Datafast", url: "https://datafa.st", size: 25, position: new THREE.Vector3(-150, 0, -120) },
             "howsthisgoing": { emoji: "🤔", name: "HowsThisGoing", url: "https://howsthisgoing.com", size: 35, position: new THREE.Vector3(100, 0, -150) },
-            "ultradm": { emoji: "✨", name: "UltraDM", url: "https://ultradm.me", size: 50, position: new THREE.Vector3(80, 0, 150) },
+            "ultradm": { emoji: "✨", name: "UltraDM", url: "https://ultradm.me", size: 35, position: new THREE.Vector3(80, 0, 150) },
             // Add more here with fixed positions
         };
 
