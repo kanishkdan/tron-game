@@ -55,8 +55,6 @@ export class Arena {
 
         // Define URLs, sizes, and FIXED POSITIONS for redirect shapes
         const redirectTargets: { [id: string]: RedirectShapeData } = {
-            "google": { emoji: "🔍", name: "Google", url: "https://google.com", size: 40, position: new THREE.Vector3(150, 0, 150) },
-            "github": { emoji: "🐙", name: "GitHub", url: "https://github.com", size: 30, position: new THREE.Vector3(-150, 0, -150) },
             "vercel": { emoji: "▲", name: "Vercel", url: "https://vercel.com", size: 25, position: new THREE.Vector3(150, 0, -150) },
             "howsthisgoing": { emoji: "🤔", name: "HowsThisGoing", url: "https://howsthisgoing.com", size: 35, position: new THREE.Vector3(100, 0, -150) },
             "ultradm": { emoji: "✨", name: "UltraDM", url: "https://ultradm.me", size: 50, position: new THREE.Vector3(80, 0, 150) },
