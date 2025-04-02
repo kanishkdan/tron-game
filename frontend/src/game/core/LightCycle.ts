@@ -165,7 +165,7 @@ export class LightCycle {
                     const glowMaterial = new THREE.MeshPhysicalMaterial({
                         color: color.hex,
                         emissive: color.hex,
-                        emissiveIntensity: 0.8,
+                        emissiveIntensity: 1.2,
                         metalness: 0.9,
                         roughness: 0.2,
                         clearcoat: 1.0,
@@ -224,7 +224,7 @@ export class LightCycle {
         }
 
         // Create a single consolidated light for the bike with reduced intensity and range
-        this.bikeLight = new THREE.PointLight(this.bikeColor.hex, 1.5, 20);
+        this.bikeLight = new THREE.PointLight(this.bikeColor.hex, 2.5, 25);
         scene.add(this.bikeLight);
 
         // Initialize trail system with bike color
@@ -351,21 +351,21 @@ export class LightCycle {
                 case LOD_HIGH:
                     this.modelContainer.visible = true;
                     this.trailLine.visible = this.trailsActive;
-                    this.bikeLight.intensity = 1.5;
+                    this.bikeLight.intensity = 2.5;
                     if (this.playerNameMesh) this.playerNameMesh.visible = true;
                     break;
                     
                 case LOD_MEDIUM:
                     this.modelContainer.visible = true;
                     this.trailLine.visible = this.trailsActive;
-                    this.bikeLight.intensity = 0.7;
+                    this.bikeLight.intensity = 1.5;
                     if (this.playerNameMesh) this.playerNameMesh.visible = true;
                     break;
                     
                 case LOD_LOW:
                     this.modelContainer.visible = true;
                     this.trailLine.visible = this.trailsActive;  // Keep trails visible
-                    this.bikeLight.intensity = 0.3;  // Reduced but not zero
+                    this.bikeLight.intensity = 0.8;  // Reduced but not zero
                     if (this.playerNameMesh) this.playerNameMesh.visible = true; // Keep names visible even in LOW LOD
                     break;
             }
@@ -1034,7 +1034,7 @@ export class LightCycle {
                     new THREE.MeshPhysicalMaterial({
                         color: this.bikeColor.hex,
                         emissive: this.bikeColor.hex,
-                        emissiveIntensity: 0.8,
+                        emissiveIntensity: 1.2,
                         metalness: 0.9,
                         roughness: 0.2,
                         clearcoat: 1.0,
@@ -1054,7 +1054,7 @@ export class LightCycle {
                                 new THREE.LineBasicMaterial({ 
                                     color: this.bikeColor.hex,
                                     transparent: true,
-                                    opacity: 0.7,
+                                    opacity: 0.9,
                                     linewidth: 1
                                 })
                             );
@@ -1096,7 +1096,7 @@ export class LightCycle {
                 this.mesh.scale.copy(this.initialScale);
                 
                 // Move the model DOWN so wheels touch the ground
-                this.mesh.position.y = -1.0;
+                this.mesh.position.y = -2.0;
                 
                 // Create materials
                 const bodyMaterial = new THREE.MeshPhysicalMaterial({
@@ -1110,7 +1110,7 @@ export class LightCycle {
                 const glowMaterial = new THREE.MeshPhysicalMaterial({
                     color: this.bikeColor.hex,
                     emissive: this.bikeColor.hex,
-                    emissiveIntensity: 0.8, // Reduced emissive intensity
+                    emissiveIntensity: 1.2,
                     metalness: 0.9,
                     roughness: 0.2,
                     clearcoat: 1.0,
@@ -1129,7 +1129,7 @@ export class LightCycle {
                             new THREE.LineBasicMaterial({ 
                                 color: this.bikeColor.hex,
                                 transparent: true,
-                                opacity: 0.7, // Reduced opacity
+                                opacity: 0.9,
                                 linewidth: 1
                             })
                         );

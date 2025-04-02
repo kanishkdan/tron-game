@@ -5,13 +5,15 @@ export interface TronColor {
 
 export class ColorUtils {
     private static readonly TRON_COLORS: TronColor[] = [
-        { hex: 0x0fbef2, name: 'blue' },    // Classic Tron blue
-        { hex: 0xffd400, name: 'yellow' },   // Bright yellow
-        { hex: 0x00ff00, name: 'green' },    // Neon green
-        { hex: 0xff0044, name: 'red' },      // Bright red
-        { hex: 0x9400d3, name: 'purple' },   // Deep purple
-        { hex: 0xff1493, name: 'pink' },     // Deep pink
-        { hex: 0x4b0082, name: 'indigo' }    // Indigo
+        { hex: 0x00ffff, name: 'cyan' },     // Bright cyan
+        { hex: 0xff00ff, name: 'magenta' },  // Electric magenta
+        { hex: 0x00ff7f, name: 'green' },    // Bright spring green
+        { hex: 0xff003c, name: 'red' },      // Vibrant red
+        { hex: 0xae00ff, name: 'purple' },   // Electric purple
+        { hex: 0xff61ab, name: 'pink' },     // Hot pink
+        { hex: 0x39ff14, name: 'lime' },     // Neon lime
+        { hex: 0xffdd00, name: 'yellow' },   // Electric yellow
+        { hex: 0x00c8ff, name: 'blue' }      // Classic Tron blue (brighter)
     ];
 
     private static usedColors: Set<number> = new Set();
