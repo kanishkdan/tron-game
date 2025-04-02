@@ -1,12 +1,13 @@
 import { usePlane, useSphere, useBox } from '@react-three/cannon';
 import * as THREE from 'three';
-import { useLoader } from '@react-three/fiber';
-import { TextureLoader, RepeatWrapping, LinearFilter, BackSide } from 'three';
+import { useLoader, useThree } from '@react-three/fiber';
+import { TextureLoader, RepeatWrapping, LinearFilter, BackSide, LinearMipmapLinearFilter } from 'three';
 import { useEffect, useRef } from 'react';
 
 export const Ground = () => {
   const groundRef = useRef<THREE.Mesh>(null);
   const domeRef = useRef<THREE.Mesh>(null);
+  const { gl } = useThree();
 
   // Load and configure the grid texture
   const texture = useLoader(TextureLoader, '/textures/tron_tile.png', undefined, (error) => {
@@ -18,10 +19,15 @@ export const Ground = () => {
       texture.wrapS = texture.wrapT = RepeatWrapping;
       texture.repeat.set(30, 30);
       texture.magFilter = LinearFilter;
-      texture.minFilter = LinearFilter;
+      texture.minFilter = LinearMipmapLinearFilter;
+      
+      // Enable Anisotropic Filtering
+      const maxAnisotropy = gl.capabilities.getMaxAnisotropy();
+      texture.anisotropy = maxAnisotropy;
+      
       texture.needsUpdate = true;
     }
-  }, [texture]);
+  }, [texture, gl]);
 
   const SIZE_MULTIPLIER = 5;
   const groundSize = 500 * SIZE_MULTIPLIER;
