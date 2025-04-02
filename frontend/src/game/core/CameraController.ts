@@ -6,7 +6,7 @@ export class CameraController {
     private target: LightCycle;
     private readonly FOLLOW_DISTANCE = 25;
     private readonly HEIGHT_OFFSET = 8;
-    private readonly LOOK_AHEAD = 10;
+    private readonly LOOK_AHEAD = 1;
     private readonly SMOOTHING = 0.08;
     private readonly TILT_STRENGTH = 0.15;
     private readonly MIN_HEIGHT = 6;
@@ -14,14 +14,14 @@ export class CameraController {
     private readonly NATURAL_HEIGHT = 10;
     private readonly NATURAL_FOV = 75;
     private readonly TURN_HEIGHT_BOOST = 0;
-    private readonly RETURN_SPEED = 0.05;
-    private readonly MAX_LATERAL_OFFSET = 0.3;
+    private readonly RETURN_SPEED = 0.10;
+    private readonly MAX_LATERAL_OFFSET = 2.5;
     private currentPosition = new THREE.Vector3();
     private currentLookAt = new THREE.Vector3();
     private idealOffset = new THREE.Vector3();
     private idealLookAt = new THREE.Vector3();
     private lastUpdateTime = 0;
-    private readonly CAMERA_LAG = 0.15;
+    private readonly CAMERA_LAG = 0.2;
     private isReturningToNatural = false;
     private returnProgress = 0;
     private lastTurnDirection = 0;
@@ -108,7 +108,7 @@ export class CameraController {
         if (this.isReturningToNatural) {
             smoothingFactor *= 0.8;
         } else if (turnDirection !== 0) {
-            smoothingFactor *= 1.1;
+            smoothingFactor *= 0.9;
         }
 
         this.currentPosition.lerp(this.idealOffset, smoothingFactor);
@@ -117,9 +117,7 @@ export class CameraController {
         this.camera.position.copy(this.currentPosition);
         this.camera.lookAt(this.currentLookAt);
 
-        const tiltSmoothness = this.isReturningToNatural ? 
-            Math.min(0.08 * deltaTime, 1) : 
-            Math.min(0.12 * deltaTime, 1);
+        const tiltSmoothness = Math.min(0.08 * deltaTime, 1);
         
         const targetTilt = turnDirection * this.TILT_STRENGTH;
         this.camera.rotation.z = THREE.MathUtils.lerp(
@@ -135,7 +133,7 @@ export class CameraController {
         this.camera.fov = THREE.MathUtils.lerp(
             this.camera.fov,
             targetFOV,
-            this.isReturningToNatural ? 0.08 : 0.12
+            0.08
         );
         this.camera.updateProjectionMatrix();
     }
