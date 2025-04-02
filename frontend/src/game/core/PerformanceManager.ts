@@ -2,7 +2,8 @@ import * as THREE from 'three';
 
 /**
  * Manages game performance by dynamically adjusting resolution scaling
- * to maintain target FPS regardless of screen size
+ * to maintain target FPS regardless of screen size.
+ * Uses localStorage to remember stable settings between sessions.
  */
 export class PerformanceManager {
     private static instance: PerformanceManager;
@@ -16,42 +17,75 @@ export class PerformanceManager {
     private readonly FPS_HISTORY_SIZE = 20;
     private isEnabled = true;
     private lastResolutionChangeTime = 0;
-    private readonly MIN_CHANGE_INTERVAL = 4000;
-    private isOptimalState = false; // Track if we've achieved optimal state (50+ FPS at 100% resolution)
+    private readonly MIN_CHANGE_INTERVAL = 3000; // Slightly reduced interval
+    private readonly STABILITY_THRESHOLD = 0.01; // Minimum change to apply
+    private readonly SMOOTHING_FACTOR = 0.1; // How quickly to move towards ideal scale (0 to 1)
+    
+    // localStorage persistence
+    private readonly STORAGE_KEY = 'tron_stableResolutionScale';
+    private lastScaleUpdateTime = 0;
+    private readonly STABLE_TIME_MS = 10000; // Time (ms) scale needs to be stable before saving
 
     private constructor() {
-        // Initialize resolution based on device size
         this.initializeResolutionScale();
         
-        // Initialize FPS history with target values
         for (let i = 0; i < this.FPS_HISTORY_SIZE; i++) {
             this.fpsHistory.push(this.targetFps);
         }
 
-        // Apply initial resolution scale to renderer
         if (window.gameRenderer) {
             this.applyResolutionScale();
         } else {
-            // If renderer not available yet, wait and try again
             setTimeout(() => this.applyResolutionScale(), 1000);
         }
 
-        // Listen for window resize events to reapply resolution
         window.addEventListener('resize', () => this.applyResolutionScale());
     }
     
     /**
-     * Initialize resolution scale based on device capabilities
+     * Initialize resolution scale based on stored value or device capabilities.
      */
     private initializeResolutionScale(): void {
-        // Check if we're on a mobile/low-tier device
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        const isLowEndDevice = isMobile || window.innerWidth < 768;
+        let initialScale = this.loadStableScale();
+
+        if (initialScale === null) {
+            // Fallback to device type if no stored scale
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            const isSmallScreen = window.innerWidth < 800 || window.innerHeight < 600;
+            const isLowEndDevice = isMobile || isSmallScreen;
+            
+            initialScale = isLowEndDevice ? 0.60 : 0.80; // Start lower for low-end, higher for high-end
+            console.log(`No stored scale found. Initializing resolution scale at ${(initialScale * 100).toFixed(0)}% based on device type.`);
+        } else {
+            console.log(`Loaded stable resolution scale from previous session: ${(initialScale * 100).toFixed(0)}%`);
+        }
         
-        // Start at 75% for big devices, 30% for small/mid/low tier
-        this.resolutionScale = isLowEndDevice ? 0.3 : 0.90;
-        
-        console.log(`Initializing resolution scale at ${(this.resolutionScale * 100).toFixed(0)}% based on device type`);
+        this.resolutionScale = initialScale;
+        this.lastScaleUpdateTime = performance.now(); // Initialize stability timer
+    }
+
+    private loadStableScale(): number | null {
+        try {
+            const storedValue = localStorage.getItem(this.STORAGE_KEY);
+            if (storedValue) {
+                const scale = parseFloat(storedValue);
+                if (!isNaN(scale) && scale >= this.MIN_RESOLUTION_SCALE && scale <= 1.0) {
+                    return scale;
+                }
+            }
+        } catch (error) {
+            console.warn('Could not read stable resolution scale from localStorage:', error);
+        }
+        return null;
+    }
+
+    private saveStableScale(scale: number): void {
+        try {
+            localStorage.setItem(this.STORAGE_KEY, scale.toFixed(2));
+            // console.log(`Saved stable resolution scale: ${(scale * 100).toFixed(0)}%`);
+        } catch (error) {
+            console.warn('Could not save stable resolution scale to localStorage:', error);
+        }
     }
 
     public static getInstance(): PerformanceManager {
@@ -62,7 +96,7 @@ export class PerformanceManager {
     }
 
     /**
-     * Call this method on each frame to update FPS tracking and adjust resolution
+     * Call this method on each frame to update FPS tracking and adjust resolution.
      */
     public update(): void {
         if (!this.isEnabled) return;
@@ -70,130 +104,166 @@ export class PerformanceManager {
         const now = performance.now();
         this.frameCount++;
         
-        // Calculate FPS every second
         if (now - this.lastFpsTime >= 1000) {
             this.currentFps = this.frameCount;
             this.frameCount = 0;
             this.lastFpsTime = now;
             
-            // Add to history and remove oldest entry
             this.fpsHistory.push(this.currentFps);
             if (this.fpsHistory.length > this.FPS_HISTORY_SIZE) {
                 this.fpsHistory.shift();
             }
             
-            // Calculate average FPS from recent history
-            const recentFps = this.fpsHistory.slice(-10);
+            const recentFps = this.fpsHistory.slice(-10); // Average over last 10 seconds
             const avgFps = recentFps.reduce((sum, fps) => sum + fps, 0) / recentFps.length;
 
-            // If we're in optimal state (50+ FPS at 100% resolution), only check if FPS drops
-            if (this.isOptimalState) {
-                if (avgFps < this.targetFps) {
-                    this.isOptimalState = false;
-                    console.log(`FPS dropped below target (${avgFps.toFixed(1)}), resuming resolution management`);
-                }
-                return;
-            }
-            
-            // Only consider resolution changes after MIN_CHANGE_INTERVAL to prevent flickering
             if (now - this.lastResolutionChangeTime < this.MIN_CHANGE_INTERVAL) {
-                return;
+                // Check for stability even if not changing scale yet
+                 if (now - this.lastScaleUpdateTime > this.STABLE_TIME_MS) {
+                    this.saveStableScale(this.resolutionScale);
+                    this.lastScaleUpdateTime = now; // Reset timer after saving
+                }
+                return; // Don't adjust scale too frequently
             }
             
-            // If FPS is below target, reduce resolution
-            if (avgFps < this.targetFps) {
-                const reduction = avgFps < 30 ? 0.9 : 0.95;
-                const newScale = Math.max(this.resolutionScale * reduction, this.MIN_RESOLUTION_SCALE);
-                
-                if (Math.abs(newScale - this.resolutionScale) > 0.01) {
-                    this.resolutionScale = newScale;
-                    this.applyResolutionScale();
-                    this.lastResolutionChangeTime = now;
-                    console.log(`FPS: ${avgFps.toFixed(1)} - Reducing resolution to ${(this.resolutionScale * 100).toFixed(0)}%`);
-                }
-            } 
-            // If FPS is above target, gradually increase resolution
-            else if (avgFps > this.targetFps && this.resolutionScale < 1.0) {
-                const newScale = Math.min(this.resolutionScale + 0.05, 1.0);
-                
+            // Calculate the ideal scale based on current performance vs target
+            // Add a small buffer to targetFps to prevent unnecessary scaling when close
+            const effectiveTargetFps = this.targetFps; // Example: Add 2 FPS buffer
+            let idealScale = this.resolutionScale * (avgFps / effectiveTargetFps);
+
+            // Clamp ideal scale to bounds
+            idealScale = Math.max(this.MIN_RESOLUTION_SCALE, Math.min(1.0, idealScale));
+
+            // Smoothly interpolate towards the ideal scale
+            let newScale = this.resolutionScale + (idealScale - this.resolutionScale) * this.SMOOTHING_FACTOR;
+            
+            // Clamp the final new scale as well
+            newScale = Math.max(this.MIN_RESOLUTION_SCALE, Math.min(1.0, newScale));
+
+            const scaleChange = newScale - this.resolutionScale;
+
+            // Apply the change only if it's significant enough
+            if (Math.abs(scaleChange) > this.STABILITY_THRESHOLD) {
+                const direction = scaleChange > 0 ? 'Increasing' : 'Reducing';
                 this.resolutionScale = newScale;
                 this.applyResolutionScale();
                 this.lastResolutionChangeTime = now;
-                console.log(`FPS: ${avgFps.toFixed(1)} - Increasing resolution to ${(this.resolutionScale * 100).toFixed(0)}%`);
-
-                // Check if we've reached optimal state (50+ FPS at 100% resolution)
-                if (this.resolutionScale >= 1.0) {
-                    this.isOptimalState = true;
-                    console.log(`Achieved optimal state: ${avgFps.toFixed(1)} FPS at 100% resolution`);
+                this.lastScaleUpdateTime = now; // Reset stability timer on change
+                console.log(`FPS: ${avgFps.toFixed(1)} -> ${direction} resolution to ${(this.resolutionScale * 100).toFixed(0)}% (Ideal: ${(idealScale * 100).toFixed(0)}%)`);
+            } else {
+                 // Scale is considered stable, check if we should save it
+                if (now - this.lastScaleUpdateTime > this.STABLE_TIME_MS) {
+                    this.saveStableScale(this.resolutionScale);
+                    this.lastScaleUpdateTime = now; // Reset timer after saving
                 }
             }
         }
     }
     
     /**
-     * Applies the current resolution scale to the renderer
+     * Applies the current resolution scale to the renderer.
      */
     private applyResolutionScale(): void {
         if (!window.gameRenderer) return;
         
         const renderer = window.gameRenderer;
-        const pixelRatio = window.devicePixelRatio || 1;
+        // Ensure pixelRatio is at least 1, even if device reports lower
+        const pixelRatio = Math.max(1, window.devicePixelRatio || 1); 
         
-        // Apply scaled pixel ratio
         renderer.setPixelRatio(pixelRatio * this.resolutionScale);
         
-        // Update renderer size to match current window size with scaling
         const width = window.innerWidth;
         const height = window.innerHeight;
-        renderer.setSize(width, height, false); // Don't update CSS size
+        // Setting updateStyle to false prevents layout shifts if CSS size is different
+        renderer.setSize(width, height, false); 
     }
 
     /**
-     * Set target FPS (default is 60)
+     * Set target FPS (default is 50).
      */
     public setTargetFps(fps: number): void {
-        this.targetFps = fps;
+        this.targetFps = Math.max(10, fps); // Ensure target is reasonable
+        // Reset history when target changes
+        this.fpsHistory = [];
+         for (let i = 0; i < this.FPS_HISTORY_SIZE; i++) {
+            this.fpsHistory.push(this.targetFps);
+        }
+        console.log(`Target FPS set to: ${this.targetFps}`);
     }
 
     /**
-     * Enable or disable dynamic resolution scaling
+     * Enable or disable dynamic resolution scaling.
      */
     public setEnabled(enabled: boolean): void {
+        const changed = this.isEnabled !== enabled;
         this.isEnabled = enabled;
         
-        // If enabling, reset history
-        if (enabled) {
-            this.fpsHistory = [];
-            for (let i = 0; i < this.FPS_HISTORY_SIZE; i++) {
-                this.fpsHistory.push(this.targetFps);
+        if (changed) {
+            if (enabled) {
+                 console.log('Dynamic resolution enabled.');
+                // Reset history and potentially re-initialize scale? 
+                // Or just let it adapt from current state. Let's just reset history.
+                 this.fpsHistory = [];
+                 for (let i = 0; i < this.FPS_HISTORY_SIZE; i++) {
+                    this.fpsHistory.push(this.targetFps);
+                 }
+                 this.lastScaleUpdateTime = performance.now(); // Reset stability timer
+            } else {
+                console.log('Dynamic resolution disabled. Setting resolution to 100%.');
+                // If disabling, reset to full resolution
+                this.resolutionScale = 1.0;
+                this.applyResolutionScale();
+                 // Optionally clear stored value when disabled? Or keep it for next time? Let's keep it.
             }
-        } else {
-            // If disabling, reset to full resolution
-            this.resolutionScale = 1.0;
-            this.applyResolutionScale();
         }
     }
 
     /**
-     * Get current FPS
+     * Get current average FPS (based on recent history).
      */
+    public getAverageFps(): number {
+         if (this.fpsHistory.length === 0) return 0;
+         const recentFps = this.fpsHistory.slice(-10);
+         return recentFps.reduce((sum, fps) => sum + fps, 0) / recentFps.length;
+    }
+    
+    /** Get instantaneous FPS */
     public getCurrentFps(): number {
         return this.currentFps;
     }
 
     /**
-     * Get current resolution scale (1.0 = 100%)
+     * Get current resolution scale (1.0 = 100%).
      */
     public getResolutionScale(): number {
         return this.resolutionScale;
     }
 
     /**
-     * Force a specific resolution scale
+     * Force a specific resolution scale, bypassing dynamic adjustments temporarily.
      */
     public setResolutionScale(scale: number): void {
-        this.resolutionScale = Math.max(this.MIN_RESOLUTION_SCALE, Math.min(1.0, scale));
-        this.applyResolutionScale();
-        this.lastResolutionChangeTime = performance.now();
+        const newScale = Math.max(this.MIN_RESOLUTION_SCALE, Math.min(1.0, scale));
+        if (Math.abs(newScale - this.resolutionScale) > 0.001) { // Avoid tiny changes
+            this.resolutionScale = newScale;
+            this.applyResolutionScale();
+            this.lastResolutionChangeTime = performance.now();
+             this.lastScaleUpdateTime = performance.now(); // Reset stability timer
+             console.log(`Resolution scale forced to ${(this.resolutionScale * 100).toFixed(0)}%`);
+             // Consider if forcing should disable automatic adjustments temporarily or permanently
+             // For now, it just sets the value and lets the update loop take over again.
+        }
+    }
+
+     /**
+     * Clear the stored stable resolution scale from localStorage.
+     */
+    public clearStoredScale(): void {
+        try {
+            localStorage.removeItem(this.STORAGE_KEY);
+            console.log('Cleared stored stable resolution scale.');
+        } catch (error) {
+            console.warn('Could not clear stored scale from localStorage:', error);
+        }
     }
 } 
