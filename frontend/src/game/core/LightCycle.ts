@@ -647,10 +647,11 @@ export class LightCycle {
     private updateVisuals() {
         if (!this.modelContainer) return;
         
-        // Update container position
-        this.modelContainer.position.copy(this.body.position as any);
+        // Smoothly interpolate container position towards physics body position
+        const physicsPosition = this.body.position as unknown as THREE.Vector3;
+        this.modelContainer.position.lerp(physicsPosition, 0.25); // Adjust lerp factor (0.0 to 1.0) as needed
         
-        // Update rotation
+        // Update rotation (already smoothed)
         this.modelContainer.rotation.y = this.currentRotation;
         this.modelContainer.rotation.z = this.currentBankAngle;
         this.modelContainer.rotation.x = this.isJumping ? -0.2 : 0;
@@ -667,6 +668,7 @@ export class LightCycle {
             1.0,
             -Math.cos(this.currentRotation) * 2
         );
+        // Base light position on the *smoothed* visual position
         this.bikeLight.position.copy(this.modelContainer.position).add(lightOffset);
     }
 
