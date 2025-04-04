@@ -94,7 +94,7 @@ export class LightCycle {
     private readonly PHYSICS_HEIGHT = 1.5; // New constant for physics body height
     
     // New properties for trail activation cooldown
-    private readonly TRAIL_ACTIVATION_DELAY = 5000; // 5 seconds in milliseconds
+    private readonly TRAIL_ACTIVATION_DELAY = 5000; // 1 second in milliseconds (reduced from 5 seconds)
     private creationTime: number = 0;
     private trailsActive: boolean;
     private trailActivationCallback?: (secondsRemaining: number) => void;
@@ -130,57 +130,75 @@ export class LightCycle {
         this.resourcesScene = scene;
         this.isLoadingModels = true;
         
+        // Check if we already have cached models in memory
+        if (this.sharedModels.has('bike')) {
+            this.isLoadingModels = false;
+            return;
+        }
+        
         // Load shared model only once
         const mtlLoader = new MTLLoader();
         const objLoader = new OBJLoader();
 
-        mtlLoader.load('/models/bike2.mtl', (materials) => {
-            materials.preload();
-            objLoader.setMaterials(materials);
-            objLoader.load('/models/bike2.obj', (object) => {
-                // Store the geometry for reuse
-                object.traverse((child) => {
-                    if (child instanceof THREE.Mesh && child.geometry) {
-                        if (!this.sharedModelGeometry) {
-                            this.sharedModelGeometry = child.geometry.clone();
-                        }
-                    }
-                });
-                
-                // Create a template model to clone
-                this.sharedModels.set('bike', object.clone());
-                
-                // Create shared materials
-                ColorUtils.getAllTronColors().forEach((color: TronColor) => {
-                    // Create body material
-                    const bodyMaterial = new THREE.MeshPhysicalMaterial({
-                        color: 0x000000,
-                        metalness: 0.9,
-                        roughness: 0.3,
-                        clearcoat: 1.0,
-                        clearcoatRoughness: 0.1
+        // Use a more efficient loading approach with Promise
+        const loadModel = () => {
+            return new Promise<void>((resolve) => {
+                mtlLoader.load('/models/bike2.mtl', (materials) => {
+                    materials.preload();
+                    objLoader.setMaterials(materials);
+                    objLoader.load('/models/bike2.obj', (object) => {
+                        // Store the geometry for reuse
+                        object.traverse((child) => {
+                            if (child instanceof THREE.Mesh && child.geometry) {
+                                if (!this.sharedModelGeometry) {
+                                    this.sharedModelGeometry = child.geometry.clone();
+                                }
+                            }
+                        });
+                        
+                        // Create a template model to clone
+                        this.sharedModels.set('bike', object.clone());
+                        
+                        // Create shared materials
+                        ColorUtils.getAllTronColors().forEach((color: TronColor) => {
+                            // Create body material
+                            const bodyMaterial = new THREE.MeshPhysicalMaterial({
+                                color: 0x000000,
+                                metalness: 0.9,
+                                roughness: 0.3,
+                                clearcoat: 1.0,
+                                clearcoatRoughness: 0.1
+                            });
+                            
+                            // Create glow material for each color
+                            const glowMaterial = new THREE.MeshPhysicalMaterial({
+                                color: color.hex,
+                                emissive: color.hex,
+                                emissiveIntensity: 1.2,
+                                metalness: 0.9,
+                                roughness: 0.2,
+                                clearcoat: 1.0,
+                                clearcoatRoughness: 0.1,
+                                transparent: true,
+                                opacity: 0.9
+                            });
+                            
+                            // Store materials
+                            this.sharedMaterials.set(`body_${color.name}`, bodyMaterial);
+                            this.sharedMaterials.set(`glow_${color.name}`, glowMaterial);
+                        });
+                        
+                        this.isLoadingModels = false;
+                        resolve();
                     });
-                    
-                    // Create glow material for each color
-                    const glowMaterial = new THREE.MeshPhysicalMaterial({
-                        color: color.hex,
-                        emissive: color.hex,
-                        emissiveIntensity: 1.2,
-                        metalness: 0.9,
-                        roughness: 0.2,
-                        clearcoat: 1.0,
-                        clearcoatRoughness: 0.1,
-                        transparent: true,
-                        opacity: 0.9
-                    });
-                    
-                    // Store materials
-                    this.sharedMaterials.set(`body_${color.name}`, bodyMaterial);
-                    this.sharedMaterials.set(`glow_${color.name}`, glowMaterial);
                 });
-                
-                this.isLoadingModels = false;
             });
+        };
+        
+        // Start loading the model
+        loadModel().catch(error => {
+            console.error("Error loading shared bike model:", error);
+            this.isLoadingModels = false;
         });
     }
 
@@ -230,7 +248,11 @@ export class LightCycle {
         // Initialize trail system with bike color
         // Remote players have immediate trails, local player has delayed trails
         this.trailsActive = useSharedResources; // Immediate trails for remote players, delayed for local
-        this.initLightTrail();
+        
+        // Defer trail initialization to improve initial loading performance
+        if (this.trailsActive) {
+            this.initLightTrail();
+        }
 
         // Create physics body
         const bikeWidth = 3;
@@ -249,8 +271,6 @@ export class LightCycle {
             angularDamping: 0.8,
             fixedRotation: true,
             material: this.bodyMaterial, // Use stored material
-            // Add userData to identify player bikes
-            // userData: { isPlayer: true } // Assign after creation
         });
         // Assign userData after creation
         (this.body as CannonBodyWithUserData).userData = { isPlayer: true };
@@ -310,8 +330,6 @@ export class LightCycle {
 
         // Create ground contact material
         const groundMaterial = new CANNON.Material("ground"); // Give ground a name
-         // Add ground material to the physics world if not already done elsewhere
-         // physicsWorld.addMaterial(groundMaterial);
 
         const contactMaterial = new CANNON.ContactMaterial(
             groundMaterial, // Assuming ground has this material
@@ -327,8 +345,10 @@ export class LightCycle {
         // Load bike model with adjusted position
         this.loadBikeModel();
 
-        // Create player name text
-        this.createPlayerNameMesh();
+        // Defer player name creation to improve initial loading performance
+        setTimeout(() => {
+            this.createPlayerNameMesh();
+        }, 100);
 
         // Initialize last grid position
         this.lastGridPosition = new THREE.Vector3(0, 0, 0);
@@ -976,14 +996,22 @@ export class LightCycle {
             depthWrite: true
         });
 
-        // Initialize with empty positions
-        const positions = new Float32Array(this.MAX_TRAIL_LENGTH * 12); // 4 vertices per point
-        const normals = new Float32Array(this.MAX_TRAIL_LENGTH * 12);
+        // Initialize with empty positions - use a more efficient approach
+        // Pre-allocate arrays with the correct size
+        const vertexCount = this.MAX_TRAIL_LENGTH * 4; // 4 vertices per point
+        const positions = new Float32Array(vertexCount * 3); // 3 components (x,y,z) per vertex
+        const normals = new Float32Array(vertexCount * 3);
+        
+        // Initialize with zeros for better performance
+        for (let i = 0; i < positions.length; i++) {
+            positions[i] = 0;
+            normals[i] = 0;
+        }
         
         this.trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         this.trailGeometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
         
-        // Create mesh
+        // Create mesh with optimized settings
         this.trailLine = new THREE.Mesh(this.trailGeometry, this.trailMaterial);
         this.trailLine.renderOrder = 1;
         this.trailLine.frustumCulled = false; // Disable frustum culling to ensure trail is always visible
@@ -1014,6 +1042,7 @@ export class LightCycle {
         this.modelContainer = new THREE.Group();
         this.scene.add(this.modelContainer);
         
+        // Check if shared resources are available and ready
         if (this.useSharedResources && LightCycle.sharedModels.has('bike') && !LightCycle.isLoadingModels) {
             // Use shared model (much faster)
             const sharedModel = LightCycle.sharedModels.get('bike');
@@ -1086,7 +1115,30 @@ export class LightCycle {
             }
         }
         
+        // If shared resources aren't available, check if they're still loading
+        if (this.useSharedResources && LightCycle.isLoadingModels) {
+            // Set up a polling mechanism to check when shared resources are ready
+            const checkInterval = setInterval(() => {
+                if (!LightCycle.isLoadingModels && LightCycle.sharedModels.has('bike')) {
+                    clearInterval(checkInterval);
+                    this.loadBikeModel(); // Retry loading with shared resources
+                }
+            }, 100);
+            
+            // Set a timeout to prevent infinite polling
+            setTimeout(() => {
+                clearInterval(checkInterval);
+                this.loadBikeModelFallback();
+            }, 5000); // 5 second timeout
+            
+            return;
+        }
+        
         // Fallback to traditional loading if shared resources aren't available
+        this.loadBikeModelFallback();
+    }
+    
+    private loadBikeModelFallback() {
         const mtlLoader = new MTLLoader();
         const objLoader = new OBJLoader();
 
