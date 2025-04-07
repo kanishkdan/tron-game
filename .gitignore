@@ -31,3 +31,5 @@ ENV/
 *.pyz
 *.pywz
 node_modules/
+backend/*.pyc
+backend/__pycache__/
