@@ -287,7 +287,7 @@ export class LightCycle {
             // --- Handle Redirect Shapes (Block/Sphere) --- 
             if (otherBody.userData?.isRedirectShape && otherBody.userData.redirectUrl) {
                 console.log("Collision with redirect shape:", otherBody.userData.type);
-                window.location.href = otherBody.userData.redirectUrl; // Redirect immediately
+                // window.location.href = otherBody.userData.redirectUrl; // Redirect immediately
                 return; // Stop further processing for this collision
             }
 
