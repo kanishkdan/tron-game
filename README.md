@@ -105,3 +105,23 @@ tron-game/
 - Three.js community for 3D rendering
 - FastAPI team for the excellent web framework
 - Tron franchise for inspiration 
+- [TRON_multiplayer](https://github.com/light-merch/TRON_multiplayer) for 3D models and game assets
+
+## What to Work On
+
+- [ ] Clean up messy code
+- [ ] Make a bigger map where you can fly
+- [ ] Add new vehicles:
+  - Flying light cycles
+  - Tron tanks
+  - Regular light cycles
+- [ ] Make an open world where you can:
+  - Fight with discs
+  - Battle in the air
+  - Race on the ground
+  - Play deathmatches
+- [ ] Add a button to turn your light trail on/off
+
+## Contact
+
+- X (Twitter): [@kanishk_razdan](https://x.com/kanishk_razdan) 
