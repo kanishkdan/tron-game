@@ -1,6 +1,6 @@
 # Tron-Game - Multiplayer Light Cycle Game
 
-A browser-based multiplayer light cycle game inspired by Tron. Built with Three.js, Cannon.js, FastAPI, and WebSocket technology.
+A browser-based multiplayer light cycle game inspired by Tron. Built with React 18 with TypeScript, React Three Fiber for 3D rendering, Cannon.js for physics, Socket.io for real-time communication, Zustand for state management, Styled Components for styling, and Vite for build tooling.
 
 ## Features
 
@@ -14,15 +14,17 @@ A browser-based multiplayer light cycle game inspired by Tron. Built with Three.
 ## Tech Stack
 
 - Frontend:
-  - Three.js for 3D rendering
+  - React 18 with TypeScript
+  - React Three Fiber for 3D rendering
   - Cannon.js for physics
-  - TypeScript
+  - Socket.io for real-time communication
+  - Zustand for state management
+  - Styled Components for styling
   - Vite for build tooling
 
 - Backend:
   - FastAPI
   - WebSocket support
-  - RabbitMQ for message queue
   - Python 3.9+
 
 ## Getting Started
@@ -31,7 +33,6 @@ A browser-based multiplayer light cycle game inspired by Tron. Built with Three.
 
 - Node.js 16+
 - Python 3.9+
-- RabbitMQ server
 - Git
 
 ### Installation
@@ -56,18 +57,12 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Set up environment variables:
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
-
 ### Development
 
 1. Start the backend server:
 ```bash
 cd backend
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
 2. Start the frontend development server:
@@ -76,7 +71,7 @@ cd frontend
 npm run dev
 ```
 
-3. Open your browser and navigate to `http://localhost:5173`
+3. Open your browser and navigate to `http://localhost:3000`
 
 ## Project Structure
 
@@ -104,10 +99,6 @@ tron-game/
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
